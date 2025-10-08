@@ -21,6 +21,7 @@ Prototyyppi yhdistää:
 
 ## 🧩 Tekninen kokonaisuus
 
+
 | Osa | Teknologia | Kuvaus |
 |------|-------------|--------|
 | **Inferenssi** | NVIDIA Triton Server | Viking 7B -mallin ajo DGX A100:lla |
@@ -33,6 +34,7 @@ Prototyyppi yhdistää:
 ---
 
 ## 🗂️ Hakemistorakenne
+
 
 ```bash
 savoniallm/
