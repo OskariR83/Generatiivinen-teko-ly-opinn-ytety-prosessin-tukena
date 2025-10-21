@@ -1,0 +1,7 @@
+doclin
+torch
+transformers
+faiss-gpu
+python-docx
+datasets
+numpy
