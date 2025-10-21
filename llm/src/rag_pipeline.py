@@ -3,15 +3,19 @@ RAG Pipeline: Doclin + DPR + FAISS + Viking-7B
 Project: GENERATIIVINEN TEKOÄLY OPINNÄYTETYÖPROSESSIN TUKENA
 Author: <Your Name>
 Description:
-    This pipeline processes a document with Doclin, encodes text with DPR,
-    retrieves relevant passages with FAISS, and uses Viking-7B to generate
-    final answers.
+    End-to-end Retrieval-Augmented Generation (RAG) pipeline that:
+    - Uses Doclin for document preprocessing and text cleaning
+    - Creates DPR embeddings for retrieval
+    - Stores FAISS indexes
+    - Generates contextual answers using Viking-7B
 """
 
 import os
+import json
 import numpy as np
 import faiss
 import torch
+from pathlib import Path
 from transformers import (
     DPRContextEncoder,
     DPRContextEncoderTokenizer,
@@ -24,44 +28,66 @@ from doclin import Doclin
 
 
 # ========================
-# Step 1: Preprocess with Doclin
+# Step 1: Doclin Preprocessing
 # ========================
 def process_with_doclin(file_path):
     """
-    Use Doclin to read and structure a document (DOCX, PDF, TXT).
-    Returns a list of clean text segments.
+    Process a document (DOCX/PDF/TXT) with Doclin.
+    - Cleans and structures text
+    - Saves results to docs/processed/
+    - Returns text blocks for embedding
     """
-    print(f"🧠 Processing document with Doclin: {file_path}")
-    model = Doclin.from_pretrained("LumiOpen/Doclin-base")
+    raw_path = Path(file_path)
+    processed_dir = Path("docs/processed")
+    processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # Doclin handles reading & text extraction automatically
-    results = model.process(file_path)
+    output_file = processed_dir / f"{raw_path.stem}_clean.json"
 
+    # Use cached processed file if available
+    if output_file.exists():
+        print(f"📂 Using cached Doclin output: {output_file}")
+        with open(output_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        print(f"🧠 Processing document with Doclin: {file_path}")
+        model = Doclin.from_pretrained("LumiOpen/Doclin-base")
+        data = model.process(file_path)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"💾 Cleaned document saved to: {output_file}")
+
+    # Extract text blocks
     text_blocks = []
-    if "sections" in results:
-        for section in results["sections"]:
+    if "sections" in data:
+        for section in data["sections"]:
             text = section.get("text", "").strip()
             if text:
                 text_blocks.append(text)
-    elif "text" in results:
-        text_blocks.append(results["text"].strip())
+    elif "text" in data:
+        text_blocks.append(data["text"].strip())
 
-    print(f"✅ Extracted {len(text_blocks)} text blocks with Doclin.")
+    print(f"✅ Extracted {len(text_blocks)} text blocks from Doclin output.")
     return text_blocks
 
 
 # ========================
-# Step 2: Build FAISS index
+# Step 2: Build FAISS Index
 # ========================
-def build_faiss_index(doc_path, index_path="my_index.faiss"):
+def build_faiss_index(doc_path, index_path=None):
     """
-    Build a FAISS index from Doclin-processed document passages.
+    Encode document passages and build a FAISS index.
+    Saves index under docs/indexes/
     """
     passages = process_with_doclin(doc_path)
     if not passages:
-        raise ValueError("No text passages extracted by Doclin.")
+        raise ValueError("❌ No text passages extracted by Doclin.")
 
-    print(f"🔍 Creating embeddings for {len(passages)} passages...")
+    index_dir = Path("docs/indexes")
+    index_dir.mkdir(parents=True, exist_ok=True)
+    index_path = index_path or index_dir / f"{Path(doc_path).stem}.faiss"
+
+    print(f"🔍 Creating DPR embeddings for {len(passages)} passages...")
 
     ctx_model = "facebook/dpr-ctx_encoder-single-nq-base"
     ctx_tokenizer = DPRContextEncoderTokenizer.from_pretrained(ctx_model)
@@ -82,18 +108,18 @@ def build_faiss_index(doc_path, index_path="my_index.faiss"):
 
     index = faiss.IndexFlatIP(embeddings.shape[1])
     index.add(embeddings)
-    faiss.write_index(index, index_path)
+    faiss.write_index(index, str(index_path))
 
-    print(f"✅ FAISS index built and saved to {index_path}")
+    print(f"✅ FAISS index built and saved to: {index_path}")
     return index, passages
 
 
 # ========================
-# Step 3: Retrieve relevant passages
+# Step 3: Passage Retrieval
 # ========================
 def retrieve_passages(question, index, passages, k=3):
     """
-    Encode a question and retrieve top-k most relevant passages using FAISS.
+    Encode a question and retrieve top-k relevant passages using FAISS.
     """
     print(f"🔎 Retrieving top {k} passages for question: {question}")
 
@@ -107,19 +133,18 @@ def retrieve_passages(question, index, passages, k=3):
 
     faiss.normalize_L2(q_emb)
     scores, idxs = index.search(q_emb, k)
-
     retrieved = [passages[i] for i in idxs[0]]
+
     print(f"✅ Retrieved {len(retrieved)} passages.")
     return retrieved
 
 
 # ========================
-# Step 4: Generate final answer with Viking-7B
+# Step 4: Viking-7B Generation
 # ========================
 def generate_answer(question, context_passages):
     """
-    Combine retrieved passages with the question and generate an answer
-    using LumiOpen/Viking-7B.
+    Generate an answer using Viking-7B based on retrieved context.
     """
     print("⚙️ Generating answer with Viking-7B...")
 
@@ -133,17 +158,12 @@ def generate_answer(question, context_passages):
 
     context_text = "\n\n".join(context_passages)
     prompt = (
-        "You are a helpful assistant. Use the following context to answer the question in Finnish language.\n\n"
+        "You are a helpful assistant. Use the following context to answer the question.\n\n"
         f"Question: {question}\n\n"
         f"Context:\n{context_text}\n\nAnswer:"
     )
 
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512
-    ).to(model.device)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(model.device)
 
     with torch.no_grad():
         output_ids = model.generate(
@@ -160,29 +180,25 @@ def generate_answer(question, context_passages):
 
 
 # ========================
-# Step 5: Full pipeline
+# Step 5: Main Execution
 # ========================
 def main():
     """
-    Run the full RAG pipeline on a document using Doclin + DPR + FAISS + Viking-7B.
+    Run the full Doclin → DPR → FAISS → Viking pipeline.
     """
-    doc_path = "docs/example.docx"
-
+    doc_path = "docs/originals/example.docx"
     if not os.path.exists(doc_path):
-        raise FileNotFoundError(f"Document not found: {doc_path}")
+        raise FileNotFoundError(f"❌ Document not found: {doc_path}")
 
-    # 1. Build FAISS index using Doclin-extracted text
     index, passages = build_faiss_index(doc_path)
 
-    # 2. Ask a question
     question = "Mitä tekoälytyökaluja dokumentissa mainitaan?"
 
-    # 3. Retrieve context and generate an answer
     top_passages = retrieve_passages(question, index, passages, k=3)
     answer = generate_answer(question, top_passages)
 
     print("\n===============================")
-    print("🎯 Final Answer from Viking-7B:")
+    print("🎯 Final Answer from Viking-7B")
     print("===============================\n")
     print(answer)
 
