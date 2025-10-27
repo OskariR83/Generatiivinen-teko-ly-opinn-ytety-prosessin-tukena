@@ -24,7 +24,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer
 )
-from doclin import Doclin
+from docling import Docling
 
 
 # ========================
