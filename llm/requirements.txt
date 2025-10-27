@@ -1,7 +1,7 @@
-doclin
+docling
 torch
 transformers
-faiss-gpu
+faiss
 python-docx
 datasets
 numpy

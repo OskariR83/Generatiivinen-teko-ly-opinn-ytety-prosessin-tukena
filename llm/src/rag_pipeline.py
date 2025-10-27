@@ -24,7 +24,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer
 )
-from doclin import Doclin
+import docling
 
 
 # ========================
@@ -32,7 +32,7 @@ from doclin import Doclin
 # ========================
 def process_with_doclin(file_path):
     """
-    Process a document (DOCX/PDF/TXT) with Doclin.
+    Process a document (DOCX/PDF/TXT) with Docling.
     - Cleans and structures text
     - Saves results to docs/processed/
     - Returns text blocks for embedding
@@ -49,15 +49,19 @@ def process_with_doclin(file_path):
         with open(output_file, "r", encoding="utf-8") as f:
             data = json.load(f)
     else:
-        print(f"🧠 Processing document with Doclin: {file_path}")
-        model = Doclin.from_pretrained("LumiOpen/Doclin-base")
-        data = model.process(file_path)
+        print(f"🧠 Processing document with Docling: {file_path}")
+        from docling.document_converter import DocumentConverter
+        converter = DocumentConverter()
+        result = converter.convert(file_path)
+        text_output = result.document.export_to_markdown()
+
+        data = {"text": text_output}
 
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"💾 Cleaned document saved to: {output_file}")
 
-    # Extract text blocks
+    # Extract text blocks (split roughly into chunks)
     text_blocks = []
     if "sections" in data:
         for section in data["sections"]:
@@ -65,10 +69,17 @@ def process_with_doclin(file_path):
             if text:
                 text_blocks.append(text)
     elif "text" in data:
-        text_blocks.append(data["text"].strip())
+        text = data["text"]
+        words = text.split()
+        chunk_size = 300
+        text_blocks = [
+            " ".join(words[i:i+chunk_size])
+            for i in range(0, len(words), chunk_size)
+        ]
 
-    print(f"✅ Extracted {len(text_blocks)} text blocks from Doclin output.")
+    print(f"✅ Extracted {len(text_blocks)} text blocks from Docling output.")
     return text_blocks
+
 
 
 # ========================
@@ -186,7 +197,9 @@ def main():
     """
     Run the full Doclin → DPR → FAISS → Viking pipeline.
     """
-    doc_path = "docs/originals/example.docx"
+    BASE_DIR = Path(__file__).resolve().parents[2]  # project root
+    doc_path = BASE_DIR / "docs/originals/Raporttipohja_AMK.docx"
+
     if not os.path.exists(doc_path):
         raise FileNotFoundError(f"❌ Document not found: {doc_path}")
 
