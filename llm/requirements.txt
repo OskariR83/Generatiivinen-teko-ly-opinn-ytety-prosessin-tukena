@@ -1,7 +1,7 @@
 docling
 torch
 transformers
-faiss
+faiss-cpu
 python-docx
 datasets
 numpy

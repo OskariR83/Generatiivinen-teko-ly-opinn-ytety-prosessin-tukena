@@ -13,6 +13,7 @@ build/
 llm/data/
 llm/models/
 llm/checkpoints/
+llm/venv/
 *.pt
 *.bin
 *.safetensors
