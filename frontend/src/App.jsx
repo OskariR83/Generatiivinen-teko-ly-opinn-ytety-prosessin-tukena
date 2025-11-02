@@ -6,6 +6,8 @@ function App() {
   const [aiReady, setAiReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const [error, setError] = useState("");
+  const normalizeText = (text) => text.replace(/[\s\-_.]/g, "").toUpperCase();
 
   useEffect(() => {}, []);
 
@@ -22,9 +24,34 @@ function App() {
     ]);
   };
 
+  const containsSensitiveData = (text) => {
+    const normalized = normalizeText(text);
+
+    const socPattern = /\d{6}[+\-A]\d{3}[0-9A-Y]/;
+    const socLoosePattern = /\d{6}\d{3}[0-9A-Y]/;
+
+    const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+    const phonePattern = /(?:\+358|0)\d{9,}/;
+
+    return (
+      socPattern.test(normalized) ||
+      socLoosePattern.test(normalized) ||
+      phonePattern.test(normalized) ||
+      emailPattern.test(text)
+    );
+  };
+
   const sendMessage = () => {
     if (inputValue.trim() === "") return;
 
+    if (containsSensitiveData(inputValue)) {
+      setError(
+        "⚠️ Älä kirjoita henkilötietoja, sähköpostiosoitetta tai puhelinnumeroa."
+      );
+      return;
+    }
+
+    setError("");
     addMessages(inputValue, true);
     setInputValue("");
   };
@@ -67,11 +94,15 @@ function App() {
           <input
             type="text"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (error && !containsSensitiveData(e.target.value)) setError("");
+            }}
             onKeyDown={handleKeyPress}
             placeholder="Kirjoita viesti..."
             className="w-full px-4 py-3 bg-gray-700/80 border border-gray-600 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:shadow-xl focus:shadow-sky-400/80 focus:ring-sky-500 transition duration-400 disabled:opacity-50 disabled:cursor-not-allowed"
           />
+          {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             onClick={sendMessage}
             className="w-full px-4 py-3 bg-[#E1007A] hover:bg-[#c9006a] border border-gray-600 rounded-2xl text-white font-semibold shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#E1007A]/50 transition duration-200"
