@@ -5,3 +5,5 @@ faiss-cpu
 python-docx
 datasets
 numpy
+onnxruntime
+rapidocr-onnxruntime

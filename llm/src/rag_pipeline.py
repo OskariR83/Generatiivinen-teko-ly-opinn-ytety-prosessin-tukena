@@ -1,15 +1,17 @@
 """
-RAG Pipeline: Docling + DPR + FAISS (CPU) + Viking-7B
-Project: GENERATIIVINEN TEKOÄLY OPINNÄYTETYÖPROSESSIN TUKENA
-Description:
-    End-to-end RAG pipeline that:
-    - uses Docling to preprocess and extract text from documents
-    - embeds passages with DPR
-    - stores vectors in FAISS (CPU)
-    - generates an answer with Viking-7B using the retrieved context
+RAG-putki: Docling + DPR + FAISS (CPU) + Viking-7B / Alpacazord-Viking-7B / Viking-13B-GGUF
+Projekti: GENERATIIVINEN TEKOÄLY OPINNÄYTETYÖPROSESSIN TUKENA
+
+Kuvaus:
+    Tämä ohjelma muodostaa päästä päähän RAG-prosessin, joka:
+    - esikäsittelee ja muuntaa dokumentit tekstimuotoon Docling-kirjastolla
+    - laskee dokumenttikappaleiden upotukset DPR-mallilla
+    - tallentaa upotukset FAISS-indeksiin (CPU)
+    - hakee parhaiten vastaavat kappaleet ja tuottaa vastauksen Viking-7B-mallilla
 """
 
 import os
+import sys
 import json
 import numpy as np
 import faiss
@@ -19,178 +21,176 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     DPRContextEncoder,
-    DPRContextEncoderTokenizer,
     DPRQuestionEncoder,
-    DPRQuestionEncoderTokenizer,
 )
 from docling.document_converter import DocumentConverter
-
 from transformers.utils import logging
+from datetime import datetime
+import gc
+
+# Vähennetään Hugging Face -kirjaston lokitusta
 logging.set_verbosity_error()
 
-# ========================
-# Step 1: Docling Preprocessing
-# ========================
-def process_with_doclin(file_path: str):
+# ===========================================================
+# ✅ Polkujen ja kansioiden määritys
+# ===========================================================
+BASE_DIR = Path(__file__).resolve().parents[2]
+DOCS_DIR = BASE_DIR / "docs"
+ORIGINALS_DIR = DOCS_DIR / "originals"
+PROCESSED_DIR = DOCS_DIR / "processed"
+INDEX_DIR = DOCS_DIR / "indexes"
+
+for d in [DOCS_DIR, ORIGINALS_DIR, PROCESSED_DIR, INDEX_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
+
+print(f"📂 Projektihakemisto: {BASE_DIR}")
+print(f"📄 Alkuperäiset dokumentit: {ORIGINALS_DIR}")
+print(f"🧹 Prosessoidut tiedostot: {PROCESSED_DIR}")
+print(f"🧠 Indeksit: {INDEX_DIR}")
+
+
+# ===========================================================
+# Vaihe 1: Docling-esikäsittely ja OCR-tarkistus
+# ===========================================================
+def kirjaa_ocr_varoitus(file_path, viesti):
     """
-    Run Docling on a single file (DOCX/PDF/TXT).
-    - Converts the document to markdown-like text
-    - Caches the cleaned version under docs/processed/
-    - Splits the text into ~300-word chunks for embedding
+    Kirjaa OCR-varoitukset tiedostoon logs/ocr_failures.log.
+    Tallentaa aikaleiman, tiedoston nimen ja varoitusviestin.
+    """
+    log_file = Path("logs/ocr_failures.log")
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    aikaleima = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{aikaleima}] {file_path}: {viesti}\n")
+
+    print(f"⚠️ OCR-varoitus kirjattu: {file_path}")
+
+
+def prosessoi_doclingilla(file_path: str):
+    """
+    Käsittelee yksittäisen dokumentin (PDF, DOCX, TXT) Docling-kirjastolla.
+
+    Vaiheet:
+    1. Tarkistaa onko aiemmin prosessoitu versio tallennettu (välimuisti)
+    2. Jos ei ole, muuntaa dokumentin tekstimuotoon ja tallentaa sen JSON-muodossa
+    3. Jakaa tekstin noin 500 sanan osiin (kappaleisiin)
+    4. Kirjaa OCR-varoitukset, jos tekstiä ei löydy tai Docling epäonnistuu
     """
     raw_path = Path(file_path)
-    processed_dir = Path("docs/processed")
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    output_file = PROCESSED_DIR / f"{raw_path.stem}_clean.json"
 
-    output_file = processed_dir / f"{raw_path.stem}_clean.json"
+    try:
+        # Käytä välimuistia, jos olemassa
+        if output_file.exists():
+            print(f"📂 Käytetään välimuistissa olevaa Docling-tiedostoa: {output_file}")
+            with open(output_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            print(f"🧠 Prosessoidaan dokumentti Doclingilla: {file_path}")
+            converter = DocumentConverter()
+            result = converter.convert(file_path)
+            text_output = result.document.export_to_markdown()
 
-    # Reuse existing processed file if it exists
-    if output_file.exists():
-        print(f"📂 Using cached Docling output: {output_file}")
-        with open(output_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    else:
-        print(f"🧠 Processing document with Docling: {file_path}")
-        converter = DocumentConverter()
-        result = converter.convert(file_path)
-        text_output = result.document.export_to_markdown()
+            if not text_output.strip():
+                kirjaa_ocr_varoitus(file_path, "Docling ei löytänyt tekstiä – mahdollinen OCR-virhe.")
 
-        data = {"text": text_output}
+            data = {"text": text_output}
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"💾 Cleaned document saved to: {output_file}")
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"💾 Puhdistettu dokumentti tallennettu: {output_file}")
 
-    # Split text into chunks for DPR
-    text_blocks = []
-    if "sections" in data:
-        # In case Docling returns structured sections
-        for section in data["sections"]:
-            text = section.get("text", "").strip()
-            if text:
-                text_blocks.append(text)
-    elif "text" in data:
-        text = data["text"]
-        words = text.split()
-        chunk_size = 300
-        text_blocks = [
-            " ".join(words[i:i + chunk_size])
-            for i in range(0, len(words), chunk_size)
-        ]
+        # Jaetaan teksti kappaleisiin
+        text_blocks = []
+        if "sections" in data:
+            for section in data["sections"]:
+                text = section.get("text", "").strip()
+                if text:
+                    text_blocks.append(text)
+        elif "text" in data:
+            text = data["text"]
+            if not text.strip():
+                kirjaa_ocr_varoitus(file_path, "Docling tuotti tyhjän tekstin.")
+            words = text.split()
+            chunk_size = 500
+            text_blocks = [
+                " ".join(words[i:i + chunk_size])
+                for i in range(0, len(words), chunk_size)
+            ]
 
-    print(f"✅ Extracted {len(text_blocks)} text blocks from Docling output.")
-    return text_blocks
+        print(f"✅ Docling-käsittelystä saatiin {len(text_blocks)} tekstikappaletta.")
+        return text_blocks
+
+    except Exception as e:
+        kirjaa_ocr_varoitus(file_path, f"OCR- tai Docling-virhe: {e}")
+        print(f"⚠️ Ohitetaan {file_path}: {e}")
+        return []
 
 
-# ========================
-# Step 2: Build FAISS Index (CPU)
-# ========================
-def build_faiss_index_multi(base_docs_dir="docs/originals", index_path="docs/indexes/combined_index.faiss"):
+# ===========================================================
+# Vaihe 2: FAISS-indeksin rakentaminen
+# ===========================================================
+def rakenna_faiss_indeksi(base_docs_dir="docs/originals", index_path="docs/indexes/combined_index.faiss"):
     """
-    Processes all documents under docs/originals/ with Docling,
-    builds (or loads) a single FAISS index containing all text chunks,
-    and saves a metadata mapping (which file each passage came from).
-
-    Features:
-    - Reuses existing processed files (docs/processed/*.json)
-    - Caches the FAISS index (docs/indexes/*.faiss)
-    - Automatically skips rebuild if originals haven't changed
-    - Prints which document triggered a rebuild
+    Rakentaa FAISS-indeksin kaikista dokumenteista.
+    Tarkistaa välimuistin, käsittelee uudet dokumentit ja laskee DPR-upotukset.
     """
-
-    from transformers import AutoTokenizer
-
     docs_path = Path(base_docs_dir)
-    index_dir = Path("docs/indexes")
-    index_dir.mkdir(parents=True, exist_ok=True)
-
     index_file = Path(index_path)
     meta_file = index_file.with_suffix(".meta.json")
 
-    # =====================================================
-    # ✅ CACHE CHECK: reuse index if originals haven't changed
-    # =====================================================
     if index_file.exists() and meta_file.exists():
         originals = list(docs_path.glob("*"))
         index_mtime = index_file.stat().st_mtime
-
-        # find any newer files
         changed = [f.name for f in originals if f.stat().st_mtime > index_mtime]
         if not changed:
-            print(f"📂 Using existing FAISS index: {index_path}")
+            print(f"📂 Käytetään olemassa olevaa FAISS-indeksiä: {index_path}")
             index = faiss.read_index(str(index_file))
-
-            # Load metadata
             with open(meta_file, "r", encoding="utf-8") as f:
                 metadata = json.load(f)["metadata"]
 
-            # Load cached processed text blocks
             passages = []
             for pfile in Path("docs/processed").glob("*_clean.json"):
                 with open(pfile, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if "text" in data:
-                        text = data["text"].strip()
-                        if text:
-                            # split into ~300-word chunks
-                            words = text.split()
-                            chunk_size = 300
-                            chunks = [
-                                " ".join(words[i:i + chunk_size])
-                                for i in range(0, len(words), chunk_size)
-                            ]
-                            passages.extend(chunks)
-                    elif "sections" in data:
-                        for section in data["sections"]:
-                            txt = section.get("text", "").strip()
-                            if txt:
-                                passages.append(txt)
-
-            print(f"✅ Loaded {len(passages)} cached passages.")
+                        words = data["text"].split()
+                        chunk_size = 300
+                        chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+                        passages.extend(chunks)
+            print(f"✅ Latauksessa {len(passages)} kappaletta välimuistista.")
             return index, passages, metadata
         else:
-            print(f"♻️ Index rebuild triggered by updated files: {', '.join(changed)}")
+            print(f"♻️ Rakennetaan indeksi uudelleen – muuttuneet tiedostot: {', '.join(changed)}")
 
-    # =====================================================
-    # 🧠 Build new index (no valid cache found)
-    # =====================================================
-    print(f"🧠 Scanning folder: {docs_path}")
-
+    print(f"🧠 Haetaan dokumentit kansiosta: {docs_path}")
     supported_exts = [".pdf", ".docx", ".txt"]
     files = [f for f in docs_path.iterdir() if f.suffix.lower() in supported_exts]
     if not files:
-        raise FileNotFoundError(f"❌ No supported documents found in {docs_path}")
+        raise FileNotFoundError(f"❌ Ei tuettuja dokumentteja hakemistossa {docs_path}")
+    print(f"📄 Löytyi {len(files)} dokumenttia käsiteltäväksi.")
 
-    print(f"📄 Found {len(files)} documents to process.")
-
-    all_passages = []
-    metadata = []  # [(filename, passage_index)]
-
-    # Process each file with Docling
+    all_passages, metadata = [], []
     for f in files:
         try:
-            print(f"🧩 Processing {f.name} ...")
-            passages = process_with_doclin(str(f))
+            print(f"🧩 Käsitellään: {f.name} ...")
+            passages = prosessoi_doclingilla(str(f))
             all_passages.extend(passages)
             metadata.extend([(f.name, i) for i in range(len(passages))])
         except Exception as e:
-            print(f"⚠️ Skipping {f.name}: {e}")
+            print(f"⚠️ Ohitetaan {f.name}: {e}")
 
-    print(f"✅ Total extracted passages: {len(all_passages)}")
+    print(f"✅ Yhteensä {len(all_passages)} kappaletta luotu.")
 
-    # =====================================================
-    # 🔍 Create DPR embeddings
-    # =====================================================
     ctx_model = "facebook/dpr-ctx_encoder-single-nq-base"
     ctx_tokenizer = AutoTokenizer.from_pretrained(ctx_model, use_fast=True)
     ctx_encoder = DPRContextEncoder.from_pretrained(ctx_model)
     ctx_encoder.eval()
 
     embeddings_list = []
-    batch_size = 4
-
-    for i in range(0, len(all_passages), batch_size):
-        batch = all_passages[i:i + batch_size]
+    for i in range(0, len(all_passages), 4):
+        batch = all_passages[i:i + 4]
         inputs = ctx_tokenizer(batch, padding=True, truncation=True, max_length=512, return_tensors="pt")
         with torch.no_grad():
             outputs = ctx_encoder(**inputs).pooler_output
@@ -198,32 +198,27 @@ def build_faiss_index_multi(base_docs_dir="docs/originals", index_path="docs/ind
 
     embeddings = np.array(embeddings_list, dtype=np.float32)
     faiss.normalize_L2(embeddings)
-
-    # =====================================================
-    # 💾 Build and save FAISS index
-    # =====================================================
     index = faiss.IndexFlatIP(embeddings.shape[1])
     index.add(embeddings)
-
     faiss.write_index(index, str(index_file))
-    print(f"💾 Combined FAISS index saved to: {index_file}")
+    print(f"💾 FAISS-indeksi tallennettu: {index_file}")
 
-    # Save metadata mapping
     with open(meta_file, "w", encoding="utf-8") as f:
         json.dump({"metadata": metadata}, f, ensure_ascii=False, indent=2)
-    print(f"💾 Metadata mapping saved to: {meta_file}")
+    print(f"💾 Metatiedot tallennettu: {meta_file}")
 
     return index, all_passages, metadata
 
 
-
-
-
-# ========================
-# Step 3: Passage Retrieval
-# ========================
-def retrieve_passages(question: str, index, passages: list[str], k: int = 3):
-    print(f"🔎 Retrieving top {k} passages for question: {question}")
+# ===========================================================
+# Vaihe 3: Kappaleiden haku kysymyksen perusteella
+# ===========================================================
+def hae_kappaleet(kysymys: str, index, passages: list[str], k: int = 3):
+    """
+    Hakee kysymystä vastaavat kappaleet FAISS-indeksistä.
+    Korjattu versio, joka estää virheelliset indeksiviittaukset.
+    """
+    print(f"🔎 Haetaan {k} parasta kappaletta kysymykseen: {kysymys}")
 
     Q_MODEL = "facebook/dpr-question_encoder-single-nq-base"
     from transformers import AutoTokenizer
@@ -232,7 +227,7 @@ def retrieve_passages(question: str, index, passages: list[str], k: int = 3):
     q_encoder.eval()
 
     q_inputs = q_tokenizer(
-        question,
+        kysymys,
         return_tensors="pt",
         truncation=True,
         max_length=512,
@@ -242,35 +237,38 @@ def retrieve_passages(question: str, index, passages: list[str], k: int = 3):
 
     faiss.normalize_L2(q_emb)
     scores, idxs = index.search(q_emb, k)
-    retrieved = [passages[i] for i in idxs[0]]
 
-    print(f"✅ Retrieved {len(retrieved)} passages.")
+    # ✅ Estetään IndexError virhe, jos FAISS palauttaa liian suuren indeksin
+    max_valid = len(passages)
+    idxs = np.clip(idxs, 0, max_valid - 1)
 
-    # optional debug print
-    for i, passage in enumerate(retrieved, 1):
+    # ✅ Varmistetaan myös ettei tyhjiä indeksejä käytetä
+    haetut = []
+    for i in idxs[0]:
+        if 0 <= i < len(passages):
+            haetut.append(passages[i])
+
+    print(f"✅ Haettu {len(haetut)} kappaletta.")
+    for j, passage in enumerate(haetut, 1):
         preview = passage[:200] + "..." if len(passage) > 200 else passage
-        print(f"\n--- Passage {i} (score: {scores[0][i-1]:.4f}) ---\n{preview}")
+        print(f"\n--- Kappale {j} ---\n{preview}")
 
-    return retrieved
+    if not haetut:
+        print("⚠️ Ei haettuja kappaleita. Tarkista, että FAISS-indeksi ja käsitellyt tekstit vastaavat toisiaan.")
+    return haetut
 
 
-
-# ========================
-# Step 4: Viking-7B Generation
-# ========================
-def generate_answer(question: str, context_passages: list[str]):
+# ===========================================================
+# Vaihe 4: Vastauksen generointi Viking-7B-mallilla
+# ===========================================================
+def generoi_vastaus(kysymys: str, konteksti: list[str]):
     """
-    Generates an answer using Viking-7B.
-    - uses a chat-style prompt
-    - trims context to avoid the model just echoing it
-    - returns only the generated part (not the prompt)
+    Tuottaa suomenkielisen vastauksen käyttäen Viking-7B (Alpacazord) -mallia.
     """
-    print("\n⚙️ Generating answer with Viking-7B...")
+    print("\n⚙️ Generoidaan vastaus mallilla Alpacazord-Viking-7B...")
 
-    model_name = "LumiOpen/Viking-7B"
+    model_name = "mpasila/Alpacazord-Viking-7B"
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-
-    # Make sure we have a pad token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -282,46 +280,32 @@ def generate_answer(question: str, context_passages: list[str]):
     )
     model.eval()
 
-    # Build context but keep it within a safe token budget
-    def build_prompt_with_budget(passages, question, max_ctx_tokens=2000):
+    def muodosta_prompt(konteksti, kysymys, max_ctx_tokens=2000):
         system_msg = (
-        "Olet asiantunteva tekoälyavustaja ja kirjoitat sujuvaa, täsmällistä suomen kieltä. "
-        "Tavoitteesi on antaa perusteltu ja selkeä vastaus käyttäen vain annettua kontekstia. "
-        "Jos vastaus ei löydy kontekstista, sano: 'En tiedä varmasti tämän perusteella.' "
-        "Kun vastaat:\n"
-        "- Käytä luettelomerkkejä, jos asioita on useita.\n"
-        "- Korosta tärkeät käsitteet **lihavoimalla**.\n"
-        "- Viittaa lähteisiin muodossa [Kappale n].\n"
-        "- Älä toista kysymystä tai tyhjiä otsikoita.\n\n"
+            "Olet asiantunteva tekoälyavustaja ja kirjoitat sujuvaa suomen kieltä. "
+            "Vastaa vain annetun kontekstin perusteella. "
+            "Jos vastaus ei löydy kontekstista, sano: 'En tiedä varmasti tämän perusteella.' "
+            "Käytä luettelomerkkejä ja korosta tärkeät käsitteet **lihavoimalla**.\n\n"
         )
-
-        user_header = f"Kysymys: {question}\n\nKonteksti:\n"
+        header = f"Kysymys: {kysymys}\n\nKonteksti:\n"
         ctx = ""
-        for i, p in enumerate(passages):
-            candidate = ctx + f"[Kappale {i+1}]\n{p}\n\n"
-            # arvioi tokenien määrä
-            if len(tokenizer.encode(system_msg + user_header + candidate)) > max_ctx_tokens:
+        for i, p in enumerate(konteksti):
+            ehdokas = ctx + f"[Kappale {i+1}]\n{p}\n\n"
+            if len(tokenizer.encode(system_msg + header + ehdokas)) > max_ctx_tokens:
                 break
-            ctx = candidate
-        return f"{system_msg}{user_header}{ctx}Vastaus:"
+            ctx = ehdokas
+        return f"{system_msg}{header}{ctx}Vastaus:"
 
+    prompt = muodosta_prompt(konteksti, kysymys)
+    print("\n🧩 PROMPT-esikatselu:\n", prompt[:500], "...\n")
 
-    prompt = build_prompt_with_budget(context_passages, question)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1600).to(model.device)
+    print(f"📊 Promptin pituus: {inputs.input_ids.shape[1]} tokenia")
 
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=1600,
-    ).to(model.device)
-
-    print(f"📊 Prompt length: {inputs.input_ids.shape[1]} tokens")
-
-    # Generate
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
-            max_new_tokens=700,       # 300 -> 400 to reduce early cut-off
+            max_new_tokens=700,
             temperature=0.6,
             top_p=0.9,
             do_sample=True,
@@ -330,60 +314,54 @@ def generate_answer(question: str, context_passages: list[str]):
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    # Keep only the generated part (do not echo context)
-    prompt_len = inputs.input_ids.shape[1]
-    gen_only = output_ids[0][prompt_len:]
-    answer = tokenizer.decode(gen_only, skip_special_tokens=True).strip()
+    gen_only = output_ids[0][inputs.input_ids.shape[1]:]
+    vastaus = tokenizer.decode(gen_only, skip_special_tokens=True).strip()
 
-    # If answer is suspiciously short, try to tell the user
-    if len(answer) < 15:
-        answer = answer + "\n(Huom. vastaus katkesi tai konteksti oli liian pitkä.)"
+    if len(vastaus) < 15:
+        vastaus += "\n(Huom. vastaus katkesi tai konteksti oli liian pitkä.)"
 
-    print("✅ Generation complete.")
-    return answer
+    print("✅ Vastauksen generointi valmis.")
+    return vastaus
 
 
-# ========================
-# Step 5: Main Execution
-# ========================
-def main():
-    """
-    Full RAG pipeline across multiple documents in /docs/originals
-    """
-    print("🚀 Starting multi-document RAG pipeline...")
+# ===========================================================
+# Vaihe 5: Pääsuoritus (CLI-tuki)
+# ===========================================================
+def main(kysymys_override=None):
+    print("🚀 Käynnistetään RAG-putki monelle dokumentille...\n")
 
-    base_dir = Path(__file__).resolve().parents[2]
-    docs_dir = base_dir / "docs/originals"
-    index_path = base_dir / "docs/indexes/combined_index.faiss"
+    docs_dir = BASE_DIR / "docs/originals"
+    index_path = BASE_DIR / "docs/indexes/combined_index.faiss"
+    index, passages, metadata = rakenna_faiss_indeksi(docs_dir, index_path)
 
-    index, passages, metadata = build_faiss_index_multi(docs_dir, index_path)
+    kysymys = kysymys_override or "Millä tavalla merkkaat lähteen lähdeluetteloon, jos käytät verkkosivua?"
+    print(f">>> Käytettävä kysymys: {kysymys}\n")
 
-    question = "Miten merkkaan lähdeviitteen raportin sisällysluetteloon, jos se on internetlähde?"
-    top_passages = retrieve_passages(question, index, passages, k=6)
+    parhaat_kappaleet = hae_kappaleet(kysymys, index, passages, k=3)
+    print(f">>> Ensimmäisen kappaleen esikatselu:\n{parhaat_kappaleet[0][:300]}...\n")
 
-    answer = generate_answer(question, top_passages)
+    vastaus = generoi_vastaus(kysymys, parhaat_kappaleet)
 
     print("\n" + "=" * 50)
-    print("🎯 FINAL ANSWER FROM VIKING-7B")
+    print("🎯 LOPULLINEN VASTAUS (Viking-7B)")
     print("=" * 50)
-    print(f"\nQuestion: {question}")
-    print(f"\nAnswer:\n{answer}")
+    print(f"\nKysymys: {kysymys}")
+    print(f"\nVastaus:\n{vastaus}")
     print("\n" + "=" * 50)
 
 
-
-import gc
-import torch
-import faiss
-
-def cleanup():
+def siivoa_muisti():
     torch.cuda.empty_cache()
     gc.collect()
 
+
 if __name__ == "__main__":
     try:
-        main()
+        if len(sys.argv) > 1:
+            kysymys_arg = " ".join(sys.argv[1:])
+            main(kysymys_arg)
+        else:
+            main()
     finally:
-        cleanup()
-        print("🧹 Cleaned up GPU and memory resources.")
-
+        siivoa_muisti()
+        print("🧹 GPU- ja muistiresurssit vapautettu.")

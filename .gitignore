@@ -10,6 +10,7 @@ build/
 *.sqlite3
 
 # Datasets, models, checkpoints
+llm/docs/
 llm/data/
 llm/models/
 llm/checkpoints/
