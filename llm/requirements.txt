@@ -1,9 +1,39 @@
-docling
+# =============================
+# 🔹 Peruskirjastot ja LLM-mallit
+# =============================
 torch
 transformers
+accelerate
+sentencepiece
+protobuf
+
+# =============================
+# 🔹 FAISS-vektori-indeksointi
+# =============================
 faiss-cpu
-python-docx
-datasets
-numpy
-onnxruntime
+
+# =============================
+# 🔹 OCR ja PDF-käsittely
+# =============================
+docling
 rapidocr-onnxruntime
+easyocr
+pdf2image
+pillow
+
+# =============================
+# 🔹 Hyötykirjastot
+# =============================
+numpy
+tqdm
+pathlib
+rich
+nltk
+python-dotenv
+
+# =============================
+# 🔹 Kehitys ja testaus
+# =============================
+pytest
+ipython
+jupyter
