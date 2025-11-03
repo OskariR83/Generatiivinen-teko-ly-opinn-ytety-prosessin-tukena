@@ -7,9 +7,6 @@ Säilyttää dokumentin rakenteen (otsikot, kappaleet, luettelot)
 ja toimii täysin offline. Yhteensopiva indexing.py:n kanssa.
 """
 import os
-os.environ["ORT_TENSORRT_UNAVAILABLE_WARNINGS"] = "1"
-os.environ["ORT_DISABLE_TENSORRT"] = "1"
-
 
 import json
 from pathlib import Path

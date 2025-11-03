@@ -9,8 +9,8 @@ Käynnistää koko RAG-putken:
 import os
 os.environ["ORT_DISABLE_TENSORRT"] = "1"
 os.environ["ORT_TENSORRT_UNAVAILABLE_WARNINGS"] = "1"
-os.environ["ORT_PROVIDERS"] = "CUDAExecutionProvider"
-os.environ["LD_LIBRARY_PATH"] = ""
+os.environ["ORT_PROVIDER"] = "CUDAExecutionProvider"
+
 
 
 import sys
