@@ -15,7 +15,7 @@ from unstructured.partition.docx import partition_docx
 from unstructured.partition.text import partition_text
 from unstructured.documents.elements import NarrativeText, Title, ListItem
 
-from .config import PROCESSED_DIR, LOG_DIR
+from config import PROCESSED_DIR, LOG_DIR
 import fitz  # PyMuPDF
 
 
