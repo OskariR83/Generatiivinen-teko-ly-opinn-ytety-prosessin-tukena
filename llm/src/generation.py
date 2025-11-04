@@ -1,97 +1,96 @@
 """
-generation.py
---------------
-Vastausten generointi LumiOpen/Viking-13B -mallilla.
-Painotus: tiukka RAG – vastaa vain lähdemateriaalin perusteella.
+generation.py (strict v3.1)
+---------------------------
+Tiukin mahdollinen malli: jos konteksti ei ole selvästi aiheeseen liittyvä,
+LLM:ää EI kutsuta lainkaan.
 """
 
+import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, logging
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from sentence_transformers import SentenceTransformer
 
-logging.set_verbosity_error()
+
+SEMANTIC_MATCH_THRESHOLD = 0.40  # 0–1
 
 
-def generate_answer(question: str, context: list[str]):
-    """Generoi tiukan, suomenkielisen vastauksen Viking-13B-mallilla."""
-    print("\n⚙️ Generoidaan vastaus mallilla LumiOpen/Viking-13B...")
+def _semantic_match(question: str, passages: list[str]) -> bool:
+    """True jos yksikin kappale on semanttisesti lähellä kysymystä."""
+    if not passages:
+        return False
 
-    model_name = "LumiOpen/Viking-13B"
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    embedder = SentenceTransformer("TurkuNLP/sbert-cased-finnish-paraphrase")
+
+    q_vec = embedder.encode([question], normalize_embeddings=True)[0]
+
+    for p in passages:
+        p_vec = embedder.encode([p], normalize_embeddings=True)[0]
+        score = float(np.dot(q_vec, p_vec))
+
+        if score >= SEMANTIC_MATCH_THRESHOLD:
+            return True
+
+    return False
+
+
+def generate_answer(question: str, context: list[str]) -> str:
+
+    # 1) Tyhjä konteksti → ei vastausta
+    if not context:
+        return "En löydä varmaa ohjetta annetuista lähteistä."
+
+    # 2) Semanttinen match check
+    if not _semantic_match(question, context):
+        return "En löydä varmaa ohjetta annetuista lähteistä."
+
+    print("\n⚙️ Generoidaan vastaus mallilla Viking-7B...")
+
+    model_name = "mpasila/Alpacazord-Viking-7B"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
         device_map="auto",
-        trust_remote_code=True
-    )
-    model.eval()
+    ).eval()
 
-    if not context:
-        print("⚠️ Konteksti on tyhjä — ei kappaleita, joista vastata.")
-        return "En pysty vastaamaan, koska lähteitä ei löytynyt."
+    # 3) Koosta lähdeteksti
+    source_text = "\n\n".join(context)
 
-    # 🎯 Tiukka, ohjaava suomenkielinen system prompt
-    system_prompt = (
-        "Toimit suomenkielisenä tekoälyavustajana, joka vastaa vain annettujen lähteiden perusteella.\n"
-        "Tehtäväsi on kertoa, miten verkkolähde merkitään lähdeluetteloon suomalaisessa opinnäytetyössä.\n"
-        "Käytä vain alla annettua kontekstia – älä keksi omaa sisältöä.\n"
-        "Jos kontekstissa ei ole ohjetta verkkolähteen merkitsemiseen, vastaa: "
-        "'En löydä varmaa ohjetta annetuista lähteistä.'\n\n"
-        "Vastauksesi tulee olla lyhyt (2–4 lausetta) ja sisältää konkreettinen esimerkki muodossa:\n"
-        "Tekijä. Vuosi. Otsikko. Verkkosivusto. Saatavilla: URL. Viitattu pp.kk.vvvv.\n"
-        "Älä lisää mitään muuta tekstiä.\n"
-    )
-
-    # 🧩 Rakennetaan konteksti – vain olennaisimmat kappaleet
-    ctx_text = ""
-    for i, p in enumerate(context[:5]):
-        if len(tokenizer.encode(ctx_text + p)) > 1500:
-            break
-        ctx_text += f"[Kappale {i+1}]\n{p}\n\n"
-
-    # 🔤 Lopullinen prompt
+    # 4) Tiukka system prompt
     prompt = (
-        f"{system_prompt}"
+        "Vastaa seuraavaan kysymykseen käyttäen VAIN annettua lähdeaineistoa.\n"
+        "Jos vastausta ei löydy lähdeaineistosta: sano täsmälleen:\n"
+        "'En löydä varmaa ohjetta annetuista lähteistä.'\n\n"
         f"Kysymys: {question}\n\n"
-        f"Alla on lähdeaineistosta poimitut kappaleet:\n"
-        f"{ctx_text}\n\n"
-        "Kirjoita vastaus vain näiden kappaleiden pohjalta.\n\nVastaus:"
+        f"Lähdeaineisto:\n{source_text}\n\n"
+        "Vastaus:"
     )
 
-    # 🧮 Tokenointi ja generointi
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1500).to(model.device)
+    # 5) Tokenointi
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+    # 6) Generointi (turvallinen, minimaalinen)
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
-            max_new_tokens=300,
-            temperature=0.4,
-            top_p=0.8,
-            do_sample=True,
-            repetition_penalty=1.15,
+            max_new_tokens=180,
+            temperature=0.25,
+            top_p=0.85,
+            repetition_penalty=1.1,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
         )
 
-    answer = tokenizer.decode(output_ids[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
+    answer = tokenizer.decode(
+        output_ids[0][inputs.input_ids.shape[1]:],
+        skip_special_tokens=True
+    ).strip()
 
-    # 🔍 Validointi — tarkista, ettei malli harhaile
-    key_terms = ["lähdeluettelo", "verkkolähde", "viitattu", "Saatavilla"]
-    if not any(k in answer.lower() for k in key_terms):
-        print("⚠️ Mallin vastaus ei sisältänyt aiheeseen liittyviä avainsanoja — yritetään uudelleen vähemmällä lämmöllä.")
-        with torch.no_grad():
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=250,
-                temperature=0.2,
-                top_p=0.7,
-                do_sample=True,
-                repetition_penalty=1.2,
-            )
-        answer = tokenizer.decode(output_ids[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
+    # 7) Jos vastaus on liian lyhyt → fallback
+    if len(answer) < 10:
+        return "En löydä varmaa ohjetta annetuista lähteistä."
 
-    # 🧹 Puhdistetaan lopputulos
-    for unwanted in ["\n\n", "\n", "###", "Vastaus:", "Lähteet:", "Kysymys:"]:
-        if answer.startswith(unwanted):
-            answer = answer.replace(unwanted, "").strip()
-
-    print("\n📝 Generoitu vastaus valmiina.\n")
     return answer

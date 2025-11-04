@@ -2,21 +2,27 @@
 main.py
 --------
 Käynnistää koko RAG-putken:
-1️⃣ Prosessoi alkuperäiset dokumentit (jos tarpeen)
-2️⃣ Rakentaa tai lataa FAISS-indeksin
-3️⃣ Suorittaa haun ja generoi vastauksen
+
+1) Dokumenttien OCR- ja tekstin esiprosessointi (jos ei cachea)
+2) FAISS-indeksin rakentaminen tai lataaminen
+3) Retrieval v3 – semanttinen + avainsanapainotteinen haku
+4) Viking-7B (tai Viking-13B) vastaus generointi
+5) Varautuminen tapaukselle, jossa viiteohjeita ei löydy
+
+Tämä versio toimii yhdessä:
+- retrieval.py (v3)
+- generation.py (v2)
 """
+
 import os
 os.environ["ORT_DISABLE_TENSORRT"] = "1"
 os.environ["ORT_TENSORRT_UNAVAILABLE_WARNINGS"] = "1"
 os.environ["ORT_PROVIDER"] = "CUDAExecutionProvider"
 
-
-
 import sys
 from pathlib import Path
 
-# Lisää projektin juurihakemisto sys.pathiin (kaksi tasoa ylöspäin)
+# Lisää projektin juurihakemisto pythonpathiin
 BASE_PATH = Path(__file__).resolve().parents[2]
 if str(BASE_PATH) not in sys.path:
     sys.path.insert(0, str(BASE_PATH))
@@ -32,7 +38,9 @@ from llm.src.ocr_utils import preprocess_all_documents
 def main(question_override=None):
     print("🚀 Käynnistetään RAG-putki...\n")
 
-    # 1️⃣ Tarkista ja suorita dokumenttien prosessointi (vain jos processed-kansio on tyhjä)
+    # ----------------------------
+    # 1) Dokumenttien prosessointi
+    # ----------------------------
     processed_dir = BASE_PATH / "docs" / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
@@ -43,17 +51,25 @@ def main(question_override=None):
     else:
         print(f"✅ Löydetty {len(json_files)} valmiiksi prosessoitua tiedostoa. Ohitetaan OCR.\n")
 
-    # 2️⃣ Rakenna tai lataa FAISS-indeksi
+    # ----------------------------
+    # 2) Rakenna tai lataa FAISS-index
+    # ----------------------------
     result = build_faiss_index()
     if result is None:
         print("❌ FAISS-indeksin rakentaminen epäonnistui – varmista, että prosessointi onnistui.")
         return
     index, passages, metadata = result
 
-    # 3️⃣ Hae vastaus
-    question = question_override or "Miten verkkolähde merkitään lähdeluetteloon suomalaisessa opinnäytetyössä?"
-    print(f"🔎 Haetaan 5 parasta kappaletta kysymykseen: {question}\n")
+    # ----------------------------
+    # 3) Kysymys
+    # ----------------------------
+    question = question_override or "Miten valitsen sopivan tutkimusmenetelmän?"
 
+    print(f"🔎 Haku: {question}\n")
+
+    # ----------------------------
+    # 4) Retrieval v3
+    # ----------------------------
     top_passages = retrieve_passages(question, index, passages, k=5)
     if not top_passages:
         print("⚠️ Ei kappaleita analysoitavaksi.")
@@ -63,11 +79,13 @@ def main(question_override=None):
     for i, kpl in enumerate(top_passages, start=1):
         print(f"[{i}] {kpl[:300]}...\n")
 
-    # 4️⃣ Generoi vastaus
+    # ----------------------------
+    # 6) Generointi Viking-7B / Viking-13B
+    # ----------------------------
     answer = generate_answer(question, top_passages)
 
     print("\n" + "=" * 50)
-    print("🎯 LOPULLINEN VASTAUS (Viking-13B)")
+    print("🎯 LOPULLINEN VASTAUS")
     print("=" * 50)
     print(f"\nKysymys: {question}")
     print(f"\nVastaus:\n{answer}")

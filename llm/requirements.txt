@@ -1,38 +1,46 @@
 # =============================
-# 🔹 Peruskirjastot ja LLM-mallit
+#  Peruskirjastot ja LLM-mallit
 # =============================
 torch
 transformers
 accelerate
 sentencepiece
 protobuf
+safetensors
 
 # =============================
-# 🔹 FAISS-vektori-indeksointi
+#  Embedding ja vektorihaku
 # =============================
+sentence-transformers
 faiss-cpu
 
 # =============================
-# 🔹 OCR ja PDF-käsittely
+#  Dokumenttien käsittely (PDF/DOCX/TXT)
 # =============================
-docling
-rapidocr-onnxruntime
-easyocr
-pdf2image
-pillow
+unstructured
+unstructured-inference
+pymupdf          # (fitz)
+python-docx
 
 # =============================
-# 🔹 Hyötykirjastot
+#  OCR (fallback)
+# =============================
+paddlepaddle      # CPU-versio (GPU-asennus tehdään setup.sh:ssa)
+paddleocr
+
+# =============================
+#  Hyötykirjastot
 # =============================
 numpy
+pandas
 tqdm
-pathlib
 rich
+pathlib
 nltk
 python-dotenv
 
 # =============================
-# 🔹 Kehitys ja testaus
+#  Kehitys ja testaus
 # =============================
 pytest
 ipython

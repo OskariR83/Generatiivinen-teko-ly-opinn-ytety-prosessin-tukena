@@ -17,5 +17,3 @@ LOG_DIR = BASE_DIR / "logs"
 for d in [DOCS_DIR, ORIGINALS_DIR, PROCESSED_DIR, INDEX_DIR, LOG_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-# OCR-asetukset
-FORCE_EASYOCR = False  # True = käytä aina EasyOCR
