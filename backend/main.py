@@ -13,7 +13,7 @@ app = FastAPI(
 # ✅ Salli yhteydet frontendiltä
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:30002"],  # tai ["*"] kehityksessä
+    allow_origins=["http://10.212.11.218:30002"],  # tai ["*"] kehityksessä
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

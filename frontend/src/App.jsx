@@ -17,10 +17,12 @@ function App() {
 
   useEffect(scrollToBottom, [messages]);
 
-  const addMessages = (newMessage, isUser) => {
+  const addMessages = (message) => {
+    const now = new Date();
+    const timestamp = `${now.getHours()}.${String(now.getMinutes()).padStart(2, "0")}`;
     setMessages((prev) => [
       ...prev,
-      { content: newMessage, isUser, id: Date.now() + Math.random() },
+      { id: Date.now() + Math.random(), ...message, timestamp, },
     ]);
   };
 
@@ -41,19 +43,47 @@ function App() {
     );
   };
 
-  const sendMessage = () => {
-    if (inputValue.trim() === "") return;
+  const sendMessage = async () =>{
+    const userText = inputValue.trim();
+    if(userText === "") return;
 
-    if (containsSensitiveData(inputValue)) {
-      setError(
-        "⚠️ Älä kirjoita henkilötietoja, sähköpostiosoitetta tai puhelinnumeroa."
-      );
+    if(containsSensitiveData(inputValue)){
+      setError("⚠️ Älä kirjoita henkilötietoja, sähköpostiosoitetta tai puhelinnumeroa.");
       return;
     }
 
+    
     setError("");
-    addMessages(inputValue, true);
+    addMessages({ content: userText, isUser: true });
     setInputValue("");
+    setIsLoading(true);
+
+    try {
+    const response = await fetch("http://localhost:8000/api/llm/query",{
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ question: userText }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    //console.log("✅ Testivastaus:", data);
+    
+    addMessages({ content: data.answer, isUser: false });
+  } catch (error) {
+    console.error("Virhe LLM-kyselyssä:", error);
+    addMessages({content: "⚠️ En saanut vastausta palvelimelta.", isUser: false});
+  } finally {
+    setIsLoading(false);
+  }
+
   };
 
   const handleKeyPress = (e) => {
@@ -79,15 +109,19 @@ function App() {
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`p-3 m-2 rounded-2xl max-w-[60%] break words break-all whitespace-pre-wrap overflow-hidden ${
-                msg.isUser
-                  ? "bg-[#E1007A]/40 text-white self-end"
-                  : "bg-gray-600/40 text-gray-100 self-start"
-              }`}
+              className={`flex ${msg.isUser ? "justify-start" : "justify-end"}`}
             >
-              <div>{msg.content}</div>
-            </div>
+              <div className={`p-3 m-2 rounded-2xl w-[60%] break-words whitespace-pre-wrap overflow-hidden ${
+                    msg.isUser
+                      ? "bg-[#E1007A]/40 text-white"
+                      : "bg-gray-600/40 text-gray-100"
+                  }`}
+                >
+                  {msg.content}
+              </div>
+          </div>
           ))}
+          
           <div ref={messagesEndRef}></div>
         </div>
         <div className="flex flex-col items-center gap-4 w-full mx-auto mt-4">
