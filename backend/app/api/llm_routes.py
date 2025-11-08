@@ -2,11 +2,8 @@
 llm_routes.py
 -------------
 FastAPI endpoint for LLM-based RAG pipeline.
-
-This route handles:
-1) FAISS index lazy initialization (on first use)
-2) Semantic retrieval (v3.5)
-3) Strict answer generation (v3.1)
+- Luo kontekstin kysymykselle (retrieval)
+- Kutsuu Viking-7B -mallia vain jos löytyy relevanttia kontekstia
 """
 
 from fastapi import APIRouter, HTTPException
@@ -15,47 +12,29 @@ import sys
 from pathlib import Path
 
 # -------------------------------------------------------------
-# 🧩 Add LLM module path
+# 🧩 Lisää LLM-moduulin polku (backend/app/api → projektin juuri)
 # -------------------------------------------------------------
-BASE_PATH = Path(__file__).resolve().parents[3]  # backend/app/api → project root
+BASE_PATH = Path(__file__).resolve().parents[3]
 LLM_SRC = BASE_PATH / "llm" / "src"
 if str(LLM_SRC) not in sys.path:
     sys.path.insert(0, str(LLM_SRC))
 
 # -------------------------------------------------------------
-# 🧠 Import RAG components
+# 🧠 LLM pipeline -komponentit
 # -------------------------------------------------------------
 from retrieval import retrieve_passages
-from generation import generate_answer
 from indexing import build_faiss_index
+from generation import generate_answer
 from utils import clear_memory
 
 router = APIRouter(prefix="/llm", tags=["LLM"])
 
 
 # -------------------------------------------------------------
-# 📘 Pydantic model
+# 📘 Pydantic-malli
 # -------------------------------------------------------------
 class LLMQuery(BaseModel):
     question: str
-
-
-# -------------------------------------------------------------
-# 🧱 Lazy index initialization
-# -------------------------------------------------------------
-INDEX_DATA = None  # cache (index, passages, meta)
-
-
-def get_or_build_index():
-    """Build FAISS index only once, when first needed."""
-    global INDEX_DATA
-    if INDEX_DATA is None:
-        print("🚀 Building FAISS index on first use...")
-        INDEX_DATA = build_faiss_index()
-        if INDEX_DATA is None:
-            raise RuntimeError("Failed to build FAISS index. Check processed docs.")
-        print("✅ FAISS index ready.")
-    return INDEX_DATA
 
 
 # -------------------------------------------------------------
@@ -65,26 +44,29 @@ def get_or_build_index():
 async def query_llm(data: LLMQuery):
     """
     Suorittaa RAG-pipelinekyselyn:
-    1) hakee relevantit kappaleet FAISS-indeksistä
-    2) generoi tiiviin vastauksen Viking-7B -mallilla
-    3) palauttaa tuloksen JSON-muodossa
+    1) Rakentaa tai hakee FAISS-indeksin
+    2) Hakee relevantit tekstikappaleet
+    3) Generoi tiiviin vastauksen Viking-7B -mallilla
+    4) Palauttaa vastauksen JSON-muodossa
     """
-    question = data.question
+    question = data.question.strip()
     print(f"\n🔎 New query received: {question}\n")
 
     try:
-        # 1) Load or build FAISS index
-        index, passages, metadata = get_or_build_index()
+        # 1️⃣ Hae tai rakenna FAISS-indeksi
+        index, passages, metadata = build_faiss_index()
 
-        # 2) Retrieve relevant passages
+        # 2️⃣ Hae relevantit kappaleet kysymykseen
         top_passages = retrieve_passages(question, index, passages)
+
         if not top_passages:
+            print("⚠️ Ei relevantteja lähteitä — palautetaan vakio vastaus.")
             return {"answer": "En löydä varmaa ohjetta annetuista lähteistä.", "status": "ok"}
 
-        # 3) Generate answer
+        # 3️⃣ Generoi vastaus mallilla
         answer = generate_answer(question, top_passages)
 
-        # 4) Cleanup
+        # 4️⃣ Vapauta GPU- ja muistiresurssit
         clear_memory()
 
         return {"answer": answer, "status": "success"}
