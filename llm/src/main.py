@@ -63,7 +63,7 @@ def main(question_override=None):
     # ----------------------------
     # 3) Kysymys
     # ----------------------------
-    question = question_override or "Miten valitsen sopivan tutkimusmenetelmän?"
+    question = question_override or "miten voin hyödyntää tekoälyä opinnäytetyössäni?"
 
     print(f"🔎 Haku: {question}\n")
 

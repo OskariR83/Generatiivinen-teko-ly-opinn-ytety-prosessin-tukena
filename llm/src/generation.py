@@ -67,10 +67,21 @@ def generate_answer(question: str, context: list[str]) -> str:
         f"Kysymys: {question}\n\n"
         f"Lähdeaineisto:\n{source_text}\n\n"
         "Vastaus:"
-    )
+    ) 
+
+
 
     # 5) Tokenointi
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    inputs = tokenizer(
+    prompt,
+    return_tensors="pt",
+    truncation=True,
+    max_length=1500
+    ).to(model.device)
+    
+    if "token_type_ids" in inputs:
+        inputs.pop("token_type_ids")
 
     # 6) Generointi (turvallinen, minimaalinen)
     with torch.no_grad():
@@ -84,13 +95,14 @@ def generate_answer(question: str, context: list[str]) -> str:
             pad_token_id=tokenizer.eos_token_id,
         )
 
+
     answer = tokenizer.decode(
         output_ids[0][inputs.input_ids.shape[1]:],
         skip_special_tokens=True
-    ).strip()
+    )
 
     # 7) Jos vastaus on liian lyhyt → fallback
-    if len(answer) < 10:
-        return "En löydä varmaa ohjetta annetuista lähteistä."
+    if len(answer) < 5:
+         return "En löydä varmaa ohjetta annetuista lähteistä."
 
     return answer
