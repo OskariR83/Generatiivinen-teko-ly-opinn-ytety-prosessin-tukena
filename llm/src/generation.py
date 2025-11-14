@@ -11,7 +11,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
 
 
-SEMANTIC_MATCH_THRESHOLD = 0.40  # 0–1
+SEMANTIC_MATCH_THRESHOLD = 0.35  # 0–1
 
 
 def _semantic_match(question: str, passages: list[str]) -> bool:
@@ -61,18 +61,19 @@ def generate_answer(question: str, context: list[str]) -> str:
 
     # 4) Tiukka system prompt
     prompt = (
-        "Vastaa seuraavaan kysymykseen käyttäen VAIN annettua lähdeaineistoa.\n"
-        "Jos vastausta ei löydy lähdeaineistosta: sano täsmälleen:\n"
-        "'En löydä varmaa ohjetta annetuista lähteistä.'\n\n"
-        f"Kysymys: {question}\n\n"
-        f"Lähdeaineisto:\n{source_text}\n\n"
-        "Vastaus:"
-    ) 
+        "Sinä olet opinnäytetyöavustaja. Vastaa kysymykseen VAIN alla olevan dokumentin perusteella.\n\n"
+        "TÄRKEÄÄ:\n"
+        "- ÄLÄ mainitse lähteitä tai tietokantoja (kuten Google Scholar, PubMed), jos niitä EI mainita dokumentissa\n"
+        "- ÄLÄ keksi lisätietoja\n"
+        "- Jos dokumentti ei vastaa kysymykseen, sano: 'En löydä varmaa ohjetta annetuista lähteistä.'\n\n"
+        f"DOKUMENTTI:\n{source_text}\n\n"
+        f"KYSYMYS: {question}\n\n"
+        "VASTAUS (vastaa lyhyesti ja ytimekkäästi):"
+    )
 
 
 
     # 5) Tokenointi
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     inputs = tokenizer(
     prompt,
     return_tensors="pt",
@@ -87,22 +88,30 @@ def generate_answer(question: str, context: list[str]) -> str:
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
-            max_new_tokens=180,
-            temperature=0.25,
+            max_new_tokens=400,
+            temperature=0.3,
             top_p=0.85,
-            repetition_penalty=1.1,
+            do_sample=True,
+            repetition_penalty=1.2,
+            no_repeat_ngram_size=3,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.eos_token_id,
         )
 
 
     answer = tokenizer.decode(
-        output_ids[0][inputs.input_ids.shape[1]:],
+        output_ids[0][inputs["input_ids"].shape[1]:],  
         skip_special_tokens=True
-    )
+    ).strip()
+    
+    print(f"\n📝 LLM vastaus ({len(answer)} merkkiä): {answer[:100]}...")
 
     # 7) Jos vastaus on liian lyhyt → fallback
-    if len(answer) < 5:
-         return "En löydä varmaa ohjetta annetuista lähteistä."
+    if len(answer) < 15:
+        print("⚠️ Liian lyhyt vastaus")
+        return "En löydä varmaa ohjetta annetuista lähteistä."
 
+        
+    print(f"✅ Vastaus hyväksytty: {answer[:100]}...")
     return answer
+
