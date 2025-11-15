@@ -6,6 +6,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const [error, setError] = useState("");
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
   const normalizeText = (text) => text.replace(/[\s\-_.]/g, "").toUpperCase();
 
   useEffect(() => {}, []);
@@ -128,6 +130,10 @@ function App() {
         {isLoading ? "⏳ Odotetaan vastausta..." : "🟢 AI valmis"}
       </div>
       <div className="w-full max-w-2xl bg-gradient-to-r from-gray-800/90 to-gray-700/90 backdrop-blur-md border border-gray-600 rounded-3xl p-6 shadow-2xl">
+      <button className="absolute top-4 right-4 px-3 py-1 bg-[#E1007A] hover:bg-[#c9006a] text-white text-xs font-semibold rounded-full shadow-md transition border border-gray-600"
+      onClick={() => setShowFeedback(true)}>
+        ⭐ Palaute
+      </button>
         <div className="h-[32rem] overflow-y-auto border-b boprder-gray-600 mb-6 p-4 bg-gradient-to-b from-gray-900/50 to-gray-800-50 rounded-2xl">
           {messages.length === 0 && (
             <div className="text-center text-gray-400 mt-20">
@@ -178,6 +184,26 @@ function App() {
           </button>
         </div>
       </div>
+      {showFeedback && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="relative bg-gray-800/95 border border-gray-600 p-6 rounded-2xl shadow-2xl w-full max-w-md text-gray-200">
+          <button onClick={() => {setFeedbackText(""), setShowFeedback(false)}} className="absolute top-3 right-3 text-gray-300 hover:text-white text-xl">
+            ✖
+          </button>
+          <h2 className="text-2xl font-light mb-4 text-center">Anna palautetta</h2>
+          <textarea
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)} className="w-full h-32 p-3 bg-gray-700/70 border border-gray-600 rounded-xl 
+            text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E1007A]/50" 
+            placeholder="Kirjoita palautteesi tähän..."/>
+
+            <button className="w-full mt-5 px-4 bg-[#E1007A] hover:gb-[#c9006a] text-white font-semibold rounded-xl shadow-md border border-gray-600 transition"
+            onClick={() => {setFeedbackText(""); setShowFeedback(false);}}>
+            Lähetä
+            </button>
+          </div>
+        </div>
+          )}
     </div>
   );
 }
