@@ -128,7 +128,7 @@ function App() {
         {isLoading ? "⏳ Odotetaan vastausta..." : "🟢 AI valmis"}
       </div>
       <div className="w-full max-w-2xl bg-gradient-to-r from-gray-800/90 to-gray-700/90 backdrop-blur-md border border-gray-600 rounded-3xl p-6 shadow-2xl">
-        <div className="h-80 overflow-y-auto border-b boprder-gray-600 mb-6 p-4 bg-gradient-to-b from-gray-900/50 to-gray-800-50 rounded-2xl">
+        <div className="h-[32rem] overflow-y-auto border-b boprder-gray-600 mb-6 p-4 bg-gradient-to-b from-gray-900/50 to-gray-800-50 rounded-2xl">
           {messages.length === 0 && (
             <div className="text-center text-gray-400 mt-20">
               👋 Aloita keskustelu kirjoittamalla viesti alla olevaan kenttään.
@@ -140,10 +140,10 @@ function App() {
               key={msg.id}
               className={`flex flex-col ${msg.isUser ? "items-start" : "items-end"}`}
             >
-              <div className={`p-3 m-2 rounded-2xl w-[60%] break-words whitespace-pre-wrap overflow-hidden ${
+              <div className={`p-3 m-2 rounded-2xl break-words whitespace-pre-wrap overflow-hidden ${
                     msg.isUser
-                      ? "bg-[#E1007A]/40 text-white"
-                      : "bg-gray-600/40 text-gray-100"
+                      ? "w-[60%] bg-[#E1007A]/40 text-white"
+                      : "w-[80%] bg-gray-600/40 text-gray-100"
                   }`}
                 >
                   {msg.content}
