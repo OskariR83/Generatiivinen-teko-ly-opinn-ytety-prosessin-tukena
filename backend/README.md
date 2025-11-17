@@ -1,7 +1,10 @@
 # Opinnäytetyön apuri – Backend (FastAPI)
 
-Tämä on opinnäytetyöprojektin backend-sovellus, joka toimii paikallisesti FastAPI:n avulla.
-Sovellus tarjoaa REST API -rajapinnan, johon voidaan myöhemmin liittää kielimalli (LLM) ja tietokantatoiminnot.
+Tämä on opinnäytetyöprojektin backend-sovellus, joka toimii FastAPI:n avulla ja toteuttaa RAG-pohjaisen (Retrieval-Augmented Generation) kielimallirajapinnan. Backend vastaa REST API -rajapinnoista, dokumenttien esikäsittelystä, FAISS-vektorihakujärjestelmästä, session-pohjaisesta keskusteluhistoriasta sekä Viking-7B-kielimallin integraatiosta.
+
+Backend toimii sekä paikallisesti että Savonian DGX A100 -palvelimen hiekkalaatikkoympäristössä.
+
+Huom: Mallien painot (Viking-7B) eivät ole repossa. Ne tallennetaan DGX-palvelimen mallikansioon.
 
 ---
 
@@ -11,24 +14,24 @@ Sovellus tarjoaa REST API -rajapinnan, johon voidaan myöhemmin liittää kielim
 backend/
 │
 ├── app/
-│   ├── __init__.py
 │   ├── api/
-│   │   ├── __init__.py
-│   │   └── routes.py          ← API-reitit (testi & palautteet)
+│   │   ├── routes.py         ← Koonti /api/ reiteille
+│   │   ├── llm_routes.py     ← LLM/RAG-kyselyt + session-historia
+│   │   └── docs_routes.py    ← OCR + dokumenttien esiprosessointi + FAISS-status
+│   │
 │   ├── core/
-│   │   ├── __init__.py
-│   │   └── config.py          ← ympäristömuuttujien lataus
+│   │   └── config.py         ← .env-muuttujat
+│   │
 │   ├── database/
-│   │   ├── __init__.py
-│   │   └── connection.py      ← tietokantayhteys (SQLModel)
+│   │   └── connection.py     ← PostgreSQL/SQLModel-yhteys
+│   │
 │   └── models/
-│       ├── __init__.py
-│       └── feedback.py        ← palautetaulun malli
+│       └── feedback.py       ← Palaute-taulun tietomalli
 │
-├── main.py                    ← sovelluksen käynnistyspiste
-├── requirements.txt           ← kirjastot
-├── .env                       ← ympäristömuuttujat (esim. DATABASE_URL)
-└── README.md                  ← tämä tiedosto
+├── main.py                   ← Sovelluksen käynnistyspiste
+├── requirements.txt          ← Riippuvuudet
+├── .env                      ← Tietokannan asetukset
+└── README.md                 
 ```
 
 ---
@@ -45,9 +48,17 @@ cd "GENERATIIVINEN TEKOÄLY OPINNÄYTETYÖPROSESSIN TUKENA/backend"
 
 ### 2. Luo ja aktivoi virtuaaliympäristö
 
-```powershell
+```
+windows
+powershell
 py -m venv venv
 .\venv\Scripts\Activate
+
+
+linux
+python3 -m venv venv
+source venv/bin/activate
+
 ```
 
 Jos Windows estää skriptin suorittamisen, voit sallia sen tilapäisesti:
@@ -91,8 +102,14 @@ CREATE DATABASE llm_db;
 
 Käynnistä sovellus backend-kansiosta:
 
-```bash
+```
+paikallisesti
+bash
 uvicorn main:app --reload
+
+hiekkalaatikossa
+uvicorn app.main:app --reload --port 8000
+
 ```
 
 ### 7. Testaa selaimessa
