@@ -1,16 +1,42 @@
 import { useState, useEffect, useRef } from "react";
+import { v4 as uuidv4 } from "uuid";
 
 function App() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("messages");
+    return saved ? JSON.parse(saved) : [];
+    });
+  
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const [error, setError] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  
   const normalizeText = (text) => text.replace(/[\s\-_.]/g, "").toUpperCase();
 
-  useEffect(() => {}, []);
+  useEffect(() => {
+
+    // Tarkista onko sessionId jo olemassa
+    let existing = sessionStorage.getItem("sessionId");
+
+    // Jos ei ole → luo uusi UUID
+    if (!existing) {
+      existing = uuidv4();
+      sessionStorage.setItem("sessionId", existing);
+    }
+
+
+    // Päivitä Reactin state
+    setSessionId(existing);
+  }, []);
+
+  // Tallenna viestit localStorageen aina kun messages muuttuu
+  useEffect(() => {
+  localStorage.setItem("messages", JSON.stringify(messages));
+  }, [messages]);
 
 
   //Vierittää keskustelunäkymän automaattisesti viimeiseen viestiin
@@ -83,7 +109,7 @@ function App() {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ question: userText }),
+      body: JSON.stringify({ question: userText, session_id: sessionId }),
       
     });
 
@@ -94,7 +120,6 @@ function App() {
     }
 
     const data = await response.json();
-    //console.log("✅ Testivastaus:", data);
     
     // Lisätään tekoälyn vastaus viestilistaan
     addMessages({ content: data.answer, isUser: false });
