@@ -14,6 +14,7 @@ function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  const [toast, setToast] = useState("");
   const [sessionId, setSessionId] = useState("");
   
   const normalizeText = (text) => text.replace(/[\s\-_.]/g, "").toUpperCase();
@@ -156,6 +157,37 @@ function App() {
     }
   };
 
+  const sendFeedback = async () => {
+    const text = feedbackText.trim();
+    if(text === "") return;
+
+    try {
+    const response = await fetch(
+      `http://localhost:8000/api/feedback?message=${encodeURIComponent(text)}`,
+      {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+
+    setFeedbackText("");
+    setShowFeedback(false);
+    setToast("Kiitos palautteestasi! 😊");
+    setTimeout(() => setToast(""), 3000);
+
+    } catch (error) {
+    console.error("Virhe palautteen lähetyksessä:", error);
+    alert("Palautteen lähetys epäonnistui. Yritä uudelleen.");
+    }
+  }
+
   // Käsittelee näppäimistön painallukset syötekentässä
   const handleKeyPress = (e) => {
     // Tarkistetaan, painettiinko Enter-näppäintä ilman Shift-näppäintä
@@ -169,6 +201,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-900 via-gray-900 to-neutral-800 flex flex-col items-center justify-center p-4 gap-8">
+
+      {toast && (
+      <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[9999]">
+        <div className="bg-green-600/90 text-white px-6 py-3 rounded-xl shadow-2xl text-lg backdrop-blur-sm pointer-events-auto animate-fade-in">
+          {toast}
+        </div>
+      </div>
+      )}
+
       <h1 className="text-6xl sm:text-7xl font-light text-gray-200 text-center">
         Chat
       </h1>
@@ -239,7 +280,7 @@ function App() {
       {showFeedback && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="relative bg-gray-800/95 border border-gray-600 p-6 rounded-2xl shadow-2xl w-full max-w-md text-gray-200">
-          <button onClick={() => {setFeedbackText(""), setShowFeedback(false)}} className="absolute top-3 right-3 text-gray-300 hover:text-white text-xl">
+          <button onClick={() => {setFeedbackText(""), setShowFeedback(false)}} className="absolute top-3 right-3 text-gray-300 hover:text-white hover:scale-110 transition-all duration-200 text-xl">
             ✖
           </button>
           <h2 className="text-2xl font-light mb-4 text-center">Anna palautetta</h2>
@@ -249,8 +290,8 @@ function App() {
             text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E1007A]/50" 
             placeholder="Kirjoita palautteesi tähän..."/>
 
-            <button className="w-full mt-5 px-4 bg-[#E1007A] hover:gb-[#c9006a] text-white font-semibold rounded-xl shadow-md border border-gray-600 transition"
-            onClick={() => {setFeedbackText(""); setShowFeedback(false);}}>
+            <button className="w-full mt-4 px-4 py-2 bg-[#E1007A]  hover:bg-[#c9006a] text-white font-semibold  rounded-xl  shadow-md  hover:shadow-lg  border border-gray-600 transition  duration-200"
+            onClick={() => {sendFeedback(), setShowFeedback(false);}}>
             Lähetä
             </button>
           </div>
