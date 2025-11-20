@@ -12,6 +12,7 @@ function App() {
   const messagesEndRef = useRef(null);
   const [error, setError] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [sessionId, setSessionId] = useState("");
   
@@ -133,6 +134,28 @@ function App() {
 
   };
 
+  const resetConversation = async () => {
+
+    if(messages.length === 0) return;
+
+    try {
+      await fetch (`http://localhost:8000/api/llm/reset?session_id=${sessionId}`,{
+        method: "GET",
+      });
+
+      const newId = uuidv4();
+      sessionStorage.setItem("sessionId", newId);
+      setSessionId(newId);
+
+      setMessages([]);
+      localStorage.removeItem("messages");
+
+    
+    } catch (error) {
+      console.error("Virhe keskustelun nollaamisessa:", error);
+    }
+  };
+
   // Käsittelee näppäimistön painallukset syötekentässä
   const handleKeyPress = (e) => {
     // Tarkistetaan, painettiinko Enter-näppäintä ilman Shift-näppäintä
@@ -155,6 +178,10 @@ function App() {
         {isLoading ? "⏳ Odotetaan vastausta..." : "🟢 AI valmis"}
       </div>
       <div className="w-full max-w-2xl bg-gradient-to-r from-gray-800/90 to-gray-700/90 backdrop-blur-md border border-gray-600 rounded-3xl p-6 shadow-2xl">
+      <button className="absolute top-4 left-4 px-3 py-1.5 bg-[#8B3DFF] hover:bg-[#762ed8] text-white text-xs font-semibold
+      rounded-full shadow-md border border-gray-600 transition" onClick={() => setShowDeleteConfirm(true)}>
+        🗑️ Poista keskustelu
+      </button>
       <button className="absolute top-4 right-4 px-3 py-1 bg-[#E1007A] hover:bg-[#c9006a] text-white text-xs font-semibold rounded-full shadow-md transition border border-gray-600"
       onClick={() => setShowFeedback(true)}>
         ⭐ Palaute
@@ -228,6 +255,40 @@ function App() {
             </button>
           </div>
         </div>
+          )}
+      {showDeleteConfirm && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="relative bg-gray-800/95 border border-gray-600 p-6 rounded-2xl shadow-2xl w-full max-w-sm text-gray-200">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="absolute top-3 right-3 text-gray-300 hover:text-white text-xl">
+                ✖
+            </button>
+
+            <h2 className="text-xl font-light mb-4 text-center">Poistetaanko keskustelu?</h2>
+              <p className="text-gray-400 text-sm mb-6 text-center">
+               Tämä poistaa koko keskustelun pysyvästi.
+              </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  resetConversation();
+                  setShowDeleteConfirm(false);
+                }}
+              className="flex-1 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white font-semibold rounded-xl transition">
+                Poista
+              </button>
+
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 bg-gray-600/60 hover:bg-gray-600 text-white font-semibold rounded-xl transition">
+                  Peruuta
+             </button>
+            </div>
+
+          </div>
+         </div>
           )}
     </div>
   );
