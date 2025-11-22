@@ -1,0 +1,30 @@
+# =============================
+# QLoRA / SFT -ympäristö (pipeline/venv)
+# Ei mitään RAG/OCR-juttuja tänne.
+# =============================
+
+# Peruskirjastot & HF-ekosysteemi
+transformers==4.35.2
+accelerate==0.25.0
+peft==0.7.0
+bitsandbytes==0.41.3
+huggingface_hub==0.23.2
+safetensors
+sentencepiece
+protobuf
+
+# Datasets & arviointi
+datasets==2.19.1
+evaluate
+scikit-learn
+
+# Utilit
+tqdm
+pandas
+numpy==1.26.4
+pyyaml
+rich
+
+# (valinnainen, mutta kätevä debugaukseen)
+ipython
+jupyter
