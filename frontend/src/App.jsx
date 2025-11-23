@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useEffect, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 
@@ -302,7 +303,7 @@ function App() {
           <div className="relative bg-gray-800/95 border border-gray-600 p-6 rounded-2xl shadow-2xl w-full max-w-sm text-gray-200">
             <button
               onClick={() => setShowDeleteConfirm(false)}
-              className="absolute top-3 right-3 text-gray-300 hover:text-white text-xl">
+              className="absolute top-3 right-3 text-gray-300 hover:text-white hover:scale-110 transition-all duration-200 text-xl">
                 ✖
             </button>
 
