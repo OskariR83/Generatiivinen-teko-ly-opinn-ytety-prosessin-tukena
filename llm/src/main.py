@@ -9,9 +9,6 @@ Käynnistää koko RAG-putken:
 4) Viking-7B (tai Viking-13B) vastaus generointi
 5) Varautuminen tapaukselle, jossa viiteohjeita ei löydy
 
-Tämä versio toimii yhdessä:
-- retrieval.py (v3)
-- generation.py (v2)
 """
 
 import os
@@ -63,7 +60,7 @@ def main(question_override=None):
     # ----------------------------
     # 3) Kysymys
     # ----------------------------
-    question = question_override or "Pitääkö työn tekijänoikeuksista sopia erikseen?"
+    question = question_override or "Miten opponointi tehdään?"
 
     print(f"🔎 Haku: {question}\n")
 
@@ -80,7 +77,7 @@ def main(question_override=None):
         print(f"[{i}] {kpl[:300]}...\n")
 
     # ----------------------------
-    # 6) Generointi Viking-7B / Viking-13B
+    # 6) Generointi Viking-7B
     # ----------------------------
     answer = generate_answer(question, top_passages)
 

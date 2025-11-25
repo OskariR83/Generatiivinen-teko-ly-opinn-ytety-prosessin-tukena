@@ -1,33 +1,81 @@
 """
-retrieval.py (strict v3.5)
---------------------------
-Tiukka relevanssisuodatin. 
-Palauttaa vain ne kappaleet, jotka ovat semanttisesti lähellä kysymystä.
-Jos yhtäkään ei löydy → palautetaan tyhjä lista.
+retrieval.py — Strict Retrieval
+------------------------------------
+
+Tämä moduuli vastaa seuraavista:
+
+1) SBERT-embedding-mallin lataus (cache)
+2) FAISS-pohjainen semanttinen haku
+3) Tiukka relevanssisuodatus (vain riittävän lähellä oleva teksti kelpaa)
+4) Duplikaattien ja matalan laadun poistaminen
+5) Palauttaa vain korkeimman pistemäärän omaavat kappaleet
+
+Huom: Jos yksikään kappale ei ylitä relevanssikynnystä,
+      palautetaan tyhjä lista → Strict RAG hylkää kysymyksen.
 """
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 
-RELEVANCE_THRESHOLD = 0.40  # liian matala = hylätään (arvo 0–1)
+# ==================================================
+# Globaalit asetukset
+# ==================================================
+
+RELEVANCE_THRESHOLD = 0.40  # min. semanttinen vastaavuus
+_EMBEDDER = None
+
+
+
+# ==================================================
+# Embedding-kone (cache)
+# ==================================================
+
+def get_embedder():
+    """Lataa embedding-mallin vain kerran."""
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        _EMBEDDER = SentenceTransformer("TurkuNLP/sbert-cased-finnish-paraphrase")
+    return _EMBEDDER
+
+
+
+# ==================================================
+# Retrieval-toiminto
+# ==================================================
 
 def retrieve_passages(query: str, index, passages: list[str], k: int = 5):
-    print(f"🔎 Strict Retrieval v3.5 – kysymys: {query}\n")
+    """
+    Palauttaa korkeintaan k kappaletta, jotka:
 
-    model_name = "TurkuNLP/sbert-cased-finnish-paraphrase"
-    embedder = SentenceTransformer(model_name)
+    - FAISS haun mukaan ovat lähimpänä kysymystä
+    - ja joiden semanttinen pistemäärä (SBERT) >= RELEVANCE_THRESHOLD
 
+    Jos yhtään relevanttia ei löydy, palautetaan tyhjä lista.
+    """
+
+    print(f"🔎 Strict Retrieval v4.0 — Kysymys: {query}\n")
+
+    embedder = get_embedder()
+
+    # 1) Embed kysymys
     q_emb = embedder.encode([query], normalize_embeddings=True)
 
-    # Hae top-20 FAISS-tulos
+    # 2) FAISS-haku — haetaan väljemmin top-20
     scores, idxs = index.search(np.array(q_emb, dtype=np.float32), 20)
-    raw_candidates = [(scores[0][i], passages[idxs[0][i]]) for i in range(len(idxs[0]))]
 
-    # Suodata pois epäolennaiset (matala semanttinen piste)
+    # Järjestä FAISS-ehdokkaat (score + teksti)
+    candidates = []
+    for i in range(len(idxs[0])):
+        score = float(scores[0][i])
+        passage_idx = int(idxs[0][i])
+        text = passages[passage_idx]
+        candidates.append((score, text))
+
+    # 3) Tiukka relevanssisuodatin
     filtered = [
         (score, text)
-        for (score, text) in raw_candidates
+        for (score, text) in candidates
         if score >= RELEVANCE_THRESHOLD
     ]
 
@@ -35,9 +83,20 @@ def retrieve_passages(query: str, index, passages: list[str], k: int = 5):
         print("⚠️ Ei yhtään riittävän relevanttia kappaletta. Palautetaan tyhjä lista.\n")
         return []
 
-    # Lajittele pisteiden mukaan
+    # 4) Lajittele korkeimmasta matalimpaan
     filtered.sort(key=lambda x: x[0], reverse=True)
 
-    top_texts = [t for _, t in filtered][:k]
-    print(f"✅ Löydetty {len(top_texts)} relevanttia kappaletta.\n")
-    return top_texts
+    # 5) Poista duplikaatit (jos FAISS antaa samoja pätkiä eri kohdista)
+    seen = set()
+    unique_passages = []
+
+    for _, text in filtered:
+        key = text.strip()
+        if key not in seen:
+            seen.add(key)
+            unique_passages.append(text)
+        if len(unique_passages) >= k:
+            break
+
+    print(f"✅ Löydetty {len(unique_passages)} relevanttia kappaletta.\n")
+    return unique_passages
