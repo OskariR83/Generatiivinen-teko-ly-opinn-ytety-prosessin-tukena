@@ -20,7 +20,7 @@ import fitz  # PyMuPDF
 
 
 # ---------------------------------------------------------------------------
-# 🔧 Lokitustuki
+# Lokitustuki
 # ---------------------------------------------------------------------------
 def log_ocr_warning(file_path, message):
     """Kirjaa OCR- ja käsittelyvaroitukset lokitiedostoon."""
@@ -33,7 +33,7 @@ def log_ocr_warning(file_path, message):
 
 
 # ---------------------------------------------------------------------------
-# 📘 Dokumenttien Unstructured-käsittely
+# Dokumenttien Unstructured-käsittely
 # ---------------------------------------------------------------------------
 def extract_text_unstructured(file_path: str):
     """Lukee PDF-, DOCX- tai TXT-tiedoston ja palauttaa sen tekstin."""
@@ -74,7 +74,7 @@ def extract_text_unstructured(file_path: str):
 
 
 # ---------------------------------------------------------------------------
-# 🧠 OCR-varamenetelmä — PaddleOCR 2.7+ yhteensopiva
+# OCR-varamenetelmä — PaddleOCR 2.7+ yhteensopiva
 # ---------------------------------------------------------------------------
 def run_paddleocr_fallback(file_path: str):
     """Käyttää PaddleOCR:ia, kun PDF ei sisällä tekstitasoa."""
@@ -87,7 +87,7 @@ def run_paddleocr_fallback(file_path: str):
         # PaddleOCR 2.7+ EI hyväksy use_gpu-parametria
         # GPU-valinta perustuu paddlepaddle-gpu asennukseen
         gpu_available = torch.cuda.is_available()
-        print(f"📌 PaddleOCR GPU-tuki: {'aktiivinen' if gpu_available else 'ei käytettävissä'}")
+        print(f"PaddleOCR GPU-tuki: {'aktiivinen' if gpu_available else 'ei käytettävissä'}")
 
         ocr = PaddleOCR(
             lang="fi",
@@ -106,7 +106,7 @@ def run_paddleocr_fallback(file_path: str):
                 if result and result[0] else ""
             )
 
-            print(f"📄 OCR-sivu {i+1}: {len(page_text)} merkkiä")
+            print(f"OCR-sivu {i+1}: {len(page_text)} merkkiä")
             text_output += page_text + "\n"
 
         return text_output.strip()
@@ -117,7 +117,7 @@ def run_paddleocr_fallback(file_path: str):
 
 
 # ---------------------------------------------------------------------------
-# ⚙️ Dokumentin prosessointi (Unstructured + OCR fallback)
+# Dokumentin prosessointi (Unstructured + OCR fallback)
 # ---------------------------------------------------------------------------
 def process_with_unstructured(file_path: str):
     raw_path = Path(file_path)
@@ -129,12 +129,12 @@ def process_with_unstructured(file_path: str):
 
     # Käytä välimuistia
     if output_file.exists():
-        print(f"📂 Käytetään välimuistissa olevaa tiedostoa: {output_file}")
+        print(f"Käytetään välimuistissa olevaa tiedostoa: {output_file}")
         with open(output_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         return text_to_chunks(data.get("text", ""))
 
-    print(f"🧠 Prosessoidaan dokumentti Unstructuredilla: {file_path}")
+    print(f"Prosessoidaan dokumentti Unstructuredilla: {file_path}")
     text_output = extract_text_unstructured(file_path)
 
     # Fallback → PaddleOCR
@@ -157,7 +157,7 @@ def process_with_unstructured(file_path: str):
 
 
 # ---------------------------------------------------------------------------
-# ✂️ Chunking
+# Chunking
 # ---------------------------------------------------------------------------
 def text_to_chunks(text: str, chunk_size: int = 400):
     """Jakaa tekstin loogisiksi kappaleiksi."""
@@ -179,7 +179,7 @@ def text_to_chunks(text: str, chunk_size: int = 400):
 
 
 # ---------------------------------------------------------------------------
-# 📘 Käsittele kaikki dokumentit kerralla
+# Käsittele kaikki dokumentit kerralla
 # ---------------------------------------------------------------------------
 def preprocess_all_documents(originals_dir=None, processed_dir=None):
     base_dir = Path(__file__).resolve().parents[2]
@@ -198,7 +198,7 @@ def preprocess_all_documents(originals_dir=None, processed_dir=None):
         print(f"⚠️ Ei käsiteltäviä dokumentteja: {originals_dir}")
         return
 
-    print(f"📄 Käsitellään {len(files)} dokumenttia...\n")
+    print(f"Käsitellään {len(files)} dokumenttia...\n")
 
     for f in files:
         processed_file = processed_dir / f"{f.stem}_clean.json"
@@ -208,7 +208,7 @@ def preprocess_all_documents(originals_dir=None, processed_dir=None):
             continue
 
         try:
-            print(f"🧠 Prosessoidaan dokumentti: {f.name}")
+            print(f"Prosessoidaan dokumentti: {f.name}")
             chunks = process_with_unstructured(str(f))
 
             if chunks:

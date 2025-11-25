@@ -1,49 +1,94 @@
 """
-generation.py — STRICT RAG v4.5 (Hybrid Compose)
------------------------------------------------
-LLM saa käyttää VAIN dokumentista hyväksyttyjä lauseita.
-Jokainen lause validoidaan embedding-mallilla.
-Jos yksikin generoidun vastauksen lause EI läpäise validointia,
-AIKAISIN palautetaan: "En löydä varmaa ohjetta annetuista lähteistä."
+generation.py — STRICT RAG v4.5 + QLoRA Adapter + Global Cache
+--------------------------------------------------------------
+LLM saa käyttää vain dokumenteista löytyviä lauseita.
+Kaikki generoidut lauseet validoidaan embedding-mallilla.
+QLoRA-adapteri ladataan mukaan Viking-7B -malliin.
+Malli ladataan vain kerran (cache), ei jokaisella kysymyksellä.
 """
 
 import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
 from sentence_transformers import SentenceTransformer
+import os
+import re
 
 
 # ------------------------------------
-# ⚙️ Thresholdit
+# Thresholdit
 # ------------------------------------
-SEMANTIC_MATCH_THRESHOLD = 0.40   # minimi että retrieval on osuva
-SENTENCE_VALIDATE_THRESHOLD = 0.45  # jokainen vastauslause validoidaan dokumenttia vasten
+SEMANTIC_MATCH_THRESHOLD = 0.40
+SENTENCE_VALIDATE_THRESHOLD = 0.45
 
 
 # ------------------------------------
-# 🧠 Embedding-malli (cache)
+# Embedding-malli (cached)
 # ------------------------------------
-_embedder = None
+_EMBEDDER = None
+
 def get_embedder():
-    global _embedder
-    if _embedder is None:
-        _embedder = SentenceTransformer("TurkuNLP/sbert-cased-finnish-paraphrase")
-    return _embedder
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        _EMBEDDER = SentenceTransformer("TurkuNLP/sbert-cased-finnish-paraphrase")
+    return _EMBEDDER
 
 
 # ------------------------------------
-# 🔎 Semanttinen osuvuus (koko kontekstille)
+# LLM + LoRA-adapterin global cache
+# ------------------------------------
+_llm_model = None
+_llm_tokenizer = None
+
+def get_llm():
+    global _llm_model, _llm_tokenizer
+
+    if _llm_model is not None:
+        return _llm_model, _llm_tokenizer
+
+    base_model_name = "mpasila/Alpacazord-Viking-7B"
+
+    # käytä ABSOLUUTTISTA POLKUA
+    adapter_path = "/home/user/GENERATIIVINEN-TEKOALY-OPINNAYTETYOPROSESSIN-TUKENA/llm/pipeline/output/viking7b-qlora-ont"
+
+    print("Ladataan perusmalli...")
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        torch_dtype=torch.float16,
+        device_map="auto",
+    )
+
+    print("Ladataan LoRA-adapteri...")
+    model = PeftModel.from_pretrained(
+        base_model,
+        adapter_path,
+        is_local=True,   # pakota paikallinen haku
+        torch_dtype=torch.float16,
+    )
+
+    model.eval()
+
+    _llm_model = model
+    _llm_tokenizer = tokenizer
+    return _llm_model, _llm_tokenizer
+
+# ------------------------------------
+# Semanttinen osuvuus
 # ------------------------------------
 def context_is_relevant(question: str, passages: list[str]) -> bool:
     if not passages:
         return False
 
-    embedder = get_embedder()
-
-    q_vec = embedder.encode([question], normalize_embeddings=True)[0]
+    emb = get_embedder()
+    q_vec = emb.encode([question], normalize_embeddings=True)[0]
 
     for p in passages:
-        p_vec = embedder.encode([p], normalize_embeddings=True)[0]
+        p_vec = emb.encode([p], normalize_embeddings=True)[0]
         score = float(np.dot(q_vec, p_vec))
 
         if score >= SEMANTIC_MATCH_THRESHOLD:
@@ -53,28 +98,26 @@ def context_is_relevant(question: str, passages: list[str]) -> bool:
 
 
 # ------------------------------------
-# ✂️ Pilko lauseisiin
+# Pilko lauseisiin
 # ------------------------------------
 def split_sentences(text: str) -> list[str]:
-    import re
     s = re.split(r'(?<=[.!?])\s+', text.strip())
     return [x.strip() for x in s if x.strip()]
 
 
 # ------------------------------------
-# 🧪 Lausekohtainen validointi
+# Vastauksen lausevalidointi
 # ------------------------------------
 def validate_answer_sentences(answer: str, context: list[str]) -> bool:
-    embedder = get_embedder()
+    emb = get_embedder()
 
-    context_vecs = embedder.encode(context, normalize_embeddings=True)
-
+    context_vecs = emb.encode(context, normalize_embeddings=True)
     sentences = split_sentences(answer)
-    print(f"🔎 Validointiin meneviä lauseita: {len(sentences)}")
+
+    print(f"Validointiin meneviä lauseita: {len(sentences)}")
 
     for s in sentences:
-        s_vec = embedder.encode([s], normalize_embeddings=True)[0]
-
+        s_vec = emb.encode([s], normalize_embeddings=True)[0]
         sims = np.dot(context_vecs, s_vec)
         max_sim = float(np.max(sims))
 
@@ -88,45 +131,35 @@ def validate_answer_sentences(answer: str, context: list[str]) -> bool:
 
 
 # ------------------------------------
-# 🤖 Generointi (Hybrid Compose)
+# Generointi QLoRA-adapterilla
 # ------------------------------------
 def generate_answer(question: str, context: list[str]) -> str:
 
-    # 1) Ei kontekstia
+    # 1) Ei kontekstia → ei vastausta
     if not context:
         return "En löydä varmaa ohjetta annetuista lähteistä."
 
-    # 2) Tarkista että kysymys liittyy edes yhteen kappaleeseen
+    # 2) Tarkista semanttinen relevanssi
     if not context_is_relevant(question, context):
         return "En löydä varmaa ohjetta annetuista lähteistä."
 
-    print("\n⚙️ Generoidaan vastaus mallilla Viking-7B (deterministinen, strict v4.5)...")
+    print("\nGeneroidaan vastaus (Strict RAG v4.5 + QLoRA)...")
 
     # 3) Koosta dokumenttikonteksti LLM:lle
-    source_context = "\n".join(context)
+    combined_context = "\n".join(context)
 
     # 4) Prompt
     prompt = (
         "Sinä olet opinnäytetyöavustaja. Vastaa kysymykseen käyttäen VAIN seuraavasta dokumentista "
-        "löytyviä tietoja. Et saa keksiä mitään uutta: kaikki väitteet tulee löytyä dokumentista.\n\n"
+        "löytyviä tietoja. Et saa keksiä mitään uutta.\n\n"
         "DOKUMENTTI:\n"
-        f"{source_context}\n\n"
+        f"{combined_context}\n\n"
         f"KYSYMYS: {question}\n\n"
-        "VASTAUS (tiiviisti ja hyvällä suomen kielellä):"
+        "VASTAUS:"
     )
 
-    # 5) LLM
-    model_name = "mpasila/Alpacazord-Viking-7B"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,
-        device_map="auto"
-    ).eval()
+    # 5) Lataa LLM ja tokenizer (cached)
+    model, tokenizer = get_llm()
 
     inputs = tokenizer(
         prompt,
@@ -138,28 +171,28 @@ def generate_answer(question: str, context: list[str]) -> str:
     if "token_type_ids" in inputs:
         inputs.pop("token_type_ids")
 
+    # 6) Generointi
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
             max_new_tokens=400,
-            do_sample=False,      # deterministinen
+            do_sample=False,
             repetition_penalty=1.15,
             no_repeat_ngram_size=4,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    # 6) Decode
     answer = tokenizer.decode(
         output_ids[0][inputs["input_ids"].shape[1]:],
         skip_special_tokens=True
     ).strip()
 
-    print(f"\n📝 LLM vastaus ({len(answer)} merkkiä): {answer[:120]}...")
+    print(f"\n LLM vastaus (ensimmäiset 150 merkkiä): {answer[:150]}...")
 
-    # 7) Turvatarkastus #2: lausevalidointi
+    # 7) Lausevalidointi
     if not validate_answer_sentences(answer, context):
         return "En löydä varmaa ohjetta annetuista lähteistä."
 
-    print("✅ Kaikki lauseet validoitu — vastaus hyväksytty.")
+    print("✅ Kaikki lauseet hyväksytty.")
     return answer

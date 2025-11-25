@@ -1,0 +1,10 @@
+{"instruction": "Mitä viimeistelyvaiheessa pitää tarkistaa?", "input": "", "output": "Kieliasu, otsikointi, sivunumerointi, lähdeviitteet, kuvat/taulukot, liitteet, tiivistelmä ja PDF/A-tallennus."}
+{"instruction": "Tarvitseeko työn olla maksimisivumääräinen?", "input": "", "output": "Ei. Tärkeintä on selkeys ja sisällön riittävyys. Ei täytettä."}
+{"instruction": "Miten teen hyvän tiivistelmän?", "input": "", "output": "150–200 sanaa. Kerro: tausta, tavoite, menetelmä, tärkeimmät tulokset ja johtopäätökset. Kirjoita passiivissa ja imperfektissä."}
+{"instruction": "Mitä tyypillisiä virheitä kannattaa välttää?", "input": "", "output": "Liian laaja aihe, sekava rakenne, puuttuvat lähdeviitteet, heikko kielioppi, epäyhtenäisyys otsikoinnissa."}
+{"instruction": "Miten varmistan, että työ on kieliopillisesti kunnossa?", "input": "", "output": "Lue työ ääneen, käytä Wordin kielentarkistusta ja anna jonkun toisen lukea työ läpi."}
+{"instruction": "Minne valmis opinnäytetyö julkaistaan?", "input": "", "output": "Savonian opiskelijoilla julkaisu tapahtuu Theseuksessa."}
+{"instruction": "Voiko työn julkaista salaisena?", "input": "", "output": "Kyllä voi. Jos opinnäytetyössä käsitellään salassa pidettävää aineistoa, työ voidaan julkaista osittain salaisena. Varsinainen raportti julkaistaan ilman salaisia liitteitä. Salainen materiaali sijoitetaan ei-julkaistaviin liitteisiin, mutta työstä tehdään silti vain yksi arvioitava versio."}
+{"instruction": "Mikä on Theseus-julkaisu?", "input": "", "output": "Suomalaisten ammattikorkeakoulujen yhteinen julkaisuarkisto, jossa opinnäytetyöt ovat luettavissa."}
+{"instruction": "Pitääkö työn tekijänoikeuksista sopia erikseen?", "input": "", "output": "Ei yleensä. Tekijänoikeus kuuluu opiskelijalle, ellei erikseen toisin sovita."}
+{"instruction": "Voinko julkaista opinnäytetyön oman portfolioni sivuilla?", "input": "", "output": "Kyllä, kun työ on julkaistu Theseuksessa. Muista kertoa lähde ja linkki Theseukseen."}

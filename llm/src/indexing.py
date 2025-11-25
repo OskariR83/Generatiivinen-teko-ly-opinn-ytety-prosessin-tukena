@@ -27,7 +27,7 @@ def build_faiss_index(processed_dir=None, index_path=None):
     Palauttaa (index, passages, metadata).
     """
 
-    print("🏗️ Rakennetaan FAISS-indeksi TurkuNLP/sbert-cased-finnish-paraphrase -mallilla...\n")
+    print("Rakennetaan FAISS-indeksi TurkuNLP/sbert-cased-finnish-paraphrase -mallilla...\n")
 
     base_dir = Path(__file__).resolve().parents[2]
     if processed_dir is None:
@@ -48,7 +48,7 @@ def build_faiss_index(processed_dir=None, index_path=None):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
-    print(f"⚙️ Käytössä laite: {device}\n")
+    print(f"Käytössä laite: {device}\n")
 
     # 🔍 Luetaan kaikki JSON-tiedostot
     json_files = list(processed_dir.rglob("*.json"))
@@ -58,9 +58,9 @@ def build_faiss_index(processed_dir=None, index_path=None):
         return None
 
     all_passages, metadata = [], []
-    print(f"📚 Ladataan {len(json_files)} prosessoitua tiedostoa...\n")
+    print(f"Ladataan {len(json_files)} prosessoitua tiedostoa...\n")
 
-    for file in tqdm(json_files, desc="📄 Luetaan aineistoa", unit="tiedosto", leave=False, dynamic_ncols=True):
+    for file in tqdm(json_files, desc="Luetaan aineistoa", unit="tiedosto", leave=False, dynamic_ncols=True):
         try:
             with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -68,7 +68,7 @@ def build_faiss_index(processed_dir=None, index_path=None):
                     text = data["text"].strip()
                     if text:
                         words = text.split()
-                        chunk_size = 200  # ✅ hyvä kompromissi semanttisen yhtenäisyyden ja tarkkuuden välillä
+                        chunk_size = 200  #hyvä kompromissi semanttisen yhtenäisyyden ja tarkkuuden välillä
                         chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
                         all_passages.extend(chunks)
                         metadata.extend([f"{file.name}#{i}" for i in range(len(chunks))])
@@ -81,13 +81,13 @@ def build_faiss_index(processed_dir=None, index_path=None):
 
     print(f"\n✅ Lataus valmis. Tekstikappaleita yhteensä: {len(all_passages)}.\n")
 
-    # 🧠 Lasketaan embeddingit
+    #Lasketaan embeddingit
     embeddings = []
-    print("🔢 Lasketaan embeddingit (vektoriesitykset)...\n")
+    print("Lasketaan embeddingit (vektoriesitykset)...\n")
 
     batch_size = 8
     for i in tqdm(range(0, len(all_passages), batch_size),
-                  desc="🔍 Embedding-erät", unit="batch", leave=False, dynamic_ncols=True):
+                  desc="Embedding-erät", unit="batch", leave=False, dynamic_ncols=True):
 
         batch = all_passages[i:i + batch_size]
         inputs = tokenizer(batch, padding=True, truncation=True, max_length=512, return_tensors="pt").to(device)
@@ -105,19 +105,19 @@ def build_faiss_index(processed_dir=None, index_path=None):
     embeddings = np.array(embeddings, dtype=np.float32)
     faiss.normalize_L2(embeddings)
 
-    # 🎯 Luo FAISS-indeksi
+    #Luo FAISS-indeksi
     dim = embeddings.shape[1]
     index = faiss.IndexFlatIP(dim)
     index.add(embeddings)
 
-    # 💾 Tallennus
+    #Tallennus
     faiss.write_index(index, str(index_file))
     with open(meta_file, "w", encoding="utf-8") as f:
         json.dump({"metadata": metadata}, f, ensure_ascii=False, indent=2)
 
     print(f"\n💾 FAISS-indeksi tallennettu: {index_file}")
     print(f"💾 Metatiedot tallennettu: {meta_file}")
-    print("🎉 Indeksin rakennus valmis.\n")
+    print("Indeksin rakennus valmis.\n")
 
     return index, all_passages, metadata
 

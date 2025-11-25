@@ -10,7 +10,6 @@ from transformers import (
     TrainingArguments,
     Trainer,
 )
-
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 
@@ -20,9 +19,6 @@ def load_config(path: str):
 
 
 def make_prompt(example):
-    """
-    Muodostaa "Alpaca-tyyppisen" promptin yhdestä rivistä.
-    """
     instr = example["instruction"].strip()
     inp = example.get("input", "").strip()
     out = example["output"].strip()
@@ -49,14 +45,14 @@ def make_prompt(example):
 def tokenize(tokenizer, max_seq_length):
     def _tokenize(example):
         text = example["prompt"] + example["labels"]
-        tokens = tokenizer(
+        outputs = tokenizer(
             text,
             truncation=True,
             max_length=max_seq_length,
             padding="max_length",
         )
-        tokens["labels"] = tokens["input_ids"].copy()
-        return tokens
+        outputs["labels"] = outputs["input_ids"].copy()
+        return outputs
 
     return _tokenize
 
@@ -93,8 +89,8 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    print("🔹 Kvantisoidaan malli 4-bit (QLoRA)...")
-    bnb_config = BitsAndBytesConfig(
+    print("🔹 Ladataan 4-bit QLoRA-malli...")
+    bnb_cfg = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
@@ -103,29 +99,33 @@ def main():
 
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
-        quantization_config=bnb_config,
         device_map="auto",
+        quantization_config=bnb_cfg,
     )
 
     model = prepare_model_for_kbit_training(model)
 
-    lora_config = LoraConfig(
+    # Täydellinen LLaMA-moduulilista
+    lora_cfg = LoraConfig(
         r=64,
         lora_alpha=16,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+        target_modules=[
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj"
+        ],
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
     )
 
-    model = get_peft_model(model, lora_config)
+    model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
 
     print("🔹 Tokenisoidaan data...")
     tokenized = dataset.map(
         tokenize(tokenizer, max_seq_length),
         batched=True,
-        remove_columns=dataset["train"].column_names,
+        remove_columns=["instruction", "input", "output", "prompt", "labels"],
     )
 
     training_args = TrainingArguments(
@@ -141,8 +141,11 @@ def main():
         eval_steps=eval_steps,
         evaluation_strategy="steps",
         save_strategy="steps",
+
+        # 🔥 Suurin korjaus:
         fp16=False,
         bf16=True,
+
         optim="paged_adamw_8bit",
         lr_scheduler_type="cosine",
         report_to="none",
@@ -163,7 +166,7 @@ def main():
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    print("✅ Valmis!")
+    print("✅ Valmis! ✔️")
 
 
 if __name__ == "__main__":

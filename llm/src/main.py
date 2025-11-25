@@ -36,7 +36,7 @@ from llm.src.ocr_utils import preprocess_all_documents
 
 
 def main(question_override=None):
-    print("🚀 Käynnistetään RAG-putki...\n")
+    print("Käynnistetään RAG-putki...\n")
 
     # ----------------------------
     # 1) Dokumenttien prosessointi
@@ -63,7 +63,7 @@ def main(question_override=None):
     # ----------------------------
     # 3) Kysymys
     # ----------------------------
-    question = question_override or "Miten tiedän, onko tutkimuskysymykseni tarpeeksi selkeä?"
+    question = question_override or "Pitääkö työn tekijänoikeuksista sopia erikseen?"
 
     print(f"🔎 Haku: {question}\n")
 
@@ -72,10 +72,10 @@ def main(question_override=None):
     # ----------------------------
     top_passages = retrieve_passages(question, index, passages, k=5)
     if not top_passages:
-        print("⚠️ Ei kappaleita analysoitavaksi.")
+        print("Ei kappaleita analysoitavaksi.")
         return
 
-    print("📄 Käytetyt kappaleet vastausta varten:\n")
+    print("Käytetyt kappaleet vastausta varten:\n")
     for i, kpl in enumerate(top_passages, start=1):
         print(f"[{i}] {kpl[:300]}...\n")
 
@@ -85,7 +85,7 @@ def main(question_override=None):
     answer = generate_answer(question, top_passages)
 
     print("\n" + "=" * 50)
-    print("🎯 LOPULLINEN VASTAUS")
+    print("LOPULLINEN VASTAUS")
     print("=" * 50)
     print(f"\nKysymys: {question}")
     print(f"\nVastaus:\n{answer}")
