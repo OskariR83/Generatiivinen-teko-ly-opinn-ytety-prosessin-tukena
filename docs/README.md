@@ -24,10 +24,10 @@ Prototyyppi yhdistää:
 
 | Osa | Teknologia | Kuvaus |
 |------|-------------|--------|
-| **LLM** | Kielimallin skriptit | Viking 7B -mallin ajo DGX A100:lla |
-| **Backend** | FastAPI (Python) | Kysymysten käsittely, RAG, FAISS-haku |
+| **LLM** | Kielimallin logiikka, RAG, FAISS-haku |
+| **Backend** | FastAPI (Python) | Kysymysten käsittely |
 | **Frontend** | React (Vite, Tailwind) | Chat-käyttöliittymä opiskelijalle |
 | **Tietokanta** | PostgreSQL | Palautteiden tallennus |
-| **Versionhallinta** | Koodi, Dockerfilet, dokumentaatio |
+| **Versionhallinta** | Koodi, dokumentaatio |
 
 ---
